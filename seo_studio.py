@@ -21,6 +21,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 from seo_evidence import EvidenceHistory, source_bytes
+from seo_publications import analyze_publications
 from seo_siteone import csv_safe, parse_report, property_origin, url_key
 
 VERSION = "0.1.0"
@@ -378,6 +379,7 @@ and ordinary HTTP responses are different evidence classes; a 200 response does 
 <label><input id="findings-only" type="checkbox"> Findings only</label>
 <div id="investigations"></div><button id="more-evidence" type="button">Show more</button>
 </section>
+<section id="publication-discovery" hidden><h2>Publication discoverability</h2><div class="panel" id="publication-review"></div></section>
 <h2>Evidence and limitations</h2><div class="panel" id="sources"></div>
 <footer>No automatic redirects, publishing changes, validation requests, or content quality scores.</footer>
 </main><script id="evidence" type="application/json">__DATA__</script>
@@ -397,6 +399,17 @@ const head=el("thead"), body=el("tbody");head.append(header);table.append(head,b
 for(const item of d.history){const tr=el("tr");for(const key of ["date","indexed","crawled_not_indexed"])tr.append(el("td",item[key]??"—"));body.append(tr);}
 history.append(table);
 }else history.textContent="No dated Search Console coverage observations supplied.";
+if(d.publication_discovery){
+const p=d.publication_discovery, s=p.summary;
+document.getElementById("publication-discovery").hidden=false;
+const review=document.getElementById("publication-review");
+review.append(el("p",s.fields+" fields · "+s.maps+" Article Maps · "+s.distinct_articles+" article targets"));
+review.append(el("p",s.articles_linked_in_initial_main+" article targets linked from the initial main HTML · "+s.parameter_variants+" parameterized hub links"));
+review.append(el("p",s.article_targets_without_path_in_captures+" targets without a path in the captured link graph. Sitewide orphan status requires broader evidence."));
+const details=el("details");details.append(el("summary","Article link and evidence inventory"));
+for(const a of p.articles) details.append(el("p",a.url+" · "+(a.hub_main_anchor?"hub link":"no initial main link")+" · sitemap "+(a.sitemap_member===true?"listed":"unknown")+" · "+(a.google_export_classes.join(", ")||"no Google export observation")));
+review.append(details);
+}
 const evidence=d.evidence_history;
 const health=document.getElementById("health"), validation=document.getElementById("validation");
 const investigations=document.getElementById("investigations"), more=document.getElementById("more-evidence");
@@ -469,6 +482,9 @@ def save_report(report: dict, output: Path) -> None:
     (output / "seo-dashboard.html").write_text(dashboard(report), encoding="utf-8")
     (output / "seo-summary.json").write_text(json.dumps(
         {k: v for k, v in report.items() if k != "inventory"}, ensure_ascii=False, indent=2), encoding="utf-8")
+    if "publication_discovery" in report:
+        (output / "seo-publication-discovery.json").write_text(
+            json.dumps(report["publication_discovery"], ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     write_csv(output / "seo-url-inventory.csv", report["inventory"],
               ["priority", "url", "indexing_status", "type", "last_crawl",
                "http_status", "redirect_count", "final_url", "action"])
@@ -494,6 +510,8 @@ def main(argv=None) -> int:
     cli.add_argument("--sitemap-xml", type=Path, action="append", default=[])
     cli.add_argument("--html-response", nargs=2, metavar=("URL", "FILE"), action="append", default=[],
                      help="Trusted local capture of a URL's HTML response body")
+    cli.add_argument("--publication-hub-html", type=Path, help="Captured initial HTML for /publications/")
+    cli.add_argument("--publication-rendered-html", nargs=2, metavar=("URL", "FILE"), action="append", default=[])
     cli.add_argument("--publications-json", type=Path, help="Explicitly authorized local publication metadata")
     cli.add_argument("--property", default="https://" + DOMAIN + "/")
     cli.add_argument("--imported-at", help="Explicit UTC import time for reproducible reports")
@@ -511,6 +529,8 @@ def main(argv=None) -> int:
             evidence.sitemap(path)
         for url, path in args.html_response:
             evidence.html_response(url, Path(path))
+        if args.publication_hub_html:
+            evidence.html_response(scope.rstrip("/") + "/publications/", args.publication_hub_html)
         if args.publications_json:
             evidence.publications(args.publications_json)
     except (ValueError, OSError, ET.ParseError, csv.Error) as exc:
@@ -520,6 +540,15 @@ def main(argv=None) -> int:
     report["generated_at"] = evidence.imported_at
     report["property"] = scope
     report["evidence_history"] = evidence.build()
+    if args.publication_hub_html:
+        try:
+            report["publication_discovery"] = analyze_publications(
+                [(scope.rstrip("/") + "/publications/", args.publication_hub_html),
+                 *((url, Path(path)) for url, path in args.html_response)],
+                [(url, Path(path)) for url, path in args.publication_rendered_html],
+                report["evidence_history"])
+        except (ValueError, OSError) as exc:
+            cli.error(str(exc))
     save_report(report, args.output_dir.expanduser().resolve())
     print("SC-SEO-02 v" + VERSION + " — offline report generated")
     print("Sources:", ", ".join(report["sources"].keys()))
