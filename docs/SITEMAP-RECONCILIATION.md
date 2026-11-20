@@ -13,3 +13,5 @@ The child directory uses the original filenames listed by the captured sitemap i
 The timing check repeats transfer and HTML analysis for four saved response bodies over loopback. It also inventories inline style bytes across the captured guides. These measurements exclude public network transit, CDN/cache behavior and WordPress response generation.
 
 The initial review verified one self-canonical on each of the 22 captured HTTP 200 pages. Five local timing repeats per slow guide completed. The private remediation review specifies four exact description drafts and two heading changes. The 12 child XML documents and an authoritative WordPress status export were pending for that review. The review made zero live origin requests.
+
+The authorized child sitemap archive, authoritative WordPress publication status export and saved repeat public performance measurements are unavailable pending verification. The completed crawl authorization covered the index alone. Acquiring its 12 children requires separate bounded authorization. Loopback transfer and parse samples are local diagnostics. Repeat public performance remains unverified.

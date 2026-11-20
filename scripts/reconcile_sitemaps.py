@@ -186,11 +186,20 @@ def main(capture, output, export=None, publications=None):
         raise ValueError("Captured index hash mismatch")
     statuses, statuses_sha = publication_lookup(publications)
     rows = reconcile(findings["public_http"], members, sources["complete"], statuses)
+    unavailable = "unavailable_pending_verification"
+    input_availability = {
+        "authorized_child_sitemap_archive": "available" if sources["complete"] else (
+            "incomplete" if export is not None else unavailable),
+        "authoritative_wordpress_status_export": "available" if publications is not None else unavailable,
+        "saved_repeat_public_performance_measurements": unavailable,
+    }
     timing, guide_profiles = replay_timings(capture, manifest)
     output.mkdir(mode=0o700, exist_ok=False)
     report = output / "sc-seo-02-1e-reconciliation.json"
     report.write_text(json.dumps({"sitemaps": sources, "pages": rows, "offline_timings": timing,
                                   "guide_payload_profiles": guide_profiles,
+                                  "input_availability": input_availability,
+                                  "public_repeat_performance_verified": False,
                                   "historic_google": {"matching_classifications":
                                       findings["historical_google"].get("matching_classifications", {})}},
                                  indent=2) + "\n")
@@ -203,6 +212,7 @@ def main(capture, output, export=None, publications=None):
         "self_canonicals": sum(r["canonical_status"] == "self" for r in rows),
         "offline_timing_sample_count": sum(len(r["local_repeats"]) for r in timing),
         "repeat_origin_timings_available": False,
+        "input_availability": input_availability, "public_repeat_performance_verified": False,
     }, indent=2) + "\n")
 
 
