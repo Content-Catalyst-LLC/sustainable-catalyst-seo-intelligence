@@ -2,12 +2,12 @@ name: SC-SEO-02 synthetic tests
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feature/sc-seo-02-initial-studio]
     paths:
-      - 'seo_studio.py'
-      - 'seo_siteone.py'
+      - 'seo_*.py'
       - 'contracts/**'
       - 'fixtures/**'
+      - 'scripts/**'
       - 'docs/**'
       - 'README.md'
       - 'tests/**'
@@ -27,7 +27,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Syntax
-        run: python3 -m py_compile seo_studio.py seo_siteone.py
+        run: python3 -m py_compile seo_*.py scripts/*.py
       - name: Synthetic unit tests
         run: python3 -m unittest discover -s tests -v
       - name: Check no real exports or local reports are tracked

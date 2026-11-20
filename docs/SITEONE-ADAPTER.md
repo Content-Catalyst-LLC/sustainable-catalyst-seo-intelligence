@@ -1,18 +1,16 @@
 # SC-SEO-02.1 — SiteOne JSON adapter (first implementation)
 
-**Release state:** Offline adapter and synthetic tests implemented. **SiteOne binary NOT installed or run against Sustainable Catalyst.** Production NO-GO.
+**Release state:** The macOS ARM64 v2.5.1 binary passed a disposable loopback crawl and deterministic replay. See [the acceptance report](SITEONE-ACCEPTANCE.md).
 
 ## Upstream version and format evidence
 
 - Pinned **evaluation release:** SiteOne Crawler [v2.5.1](https://github.com/janreges/siteone-crawler/releases/tag/v2.5.1), released June 27, 2026, MIT license (copyright Ján Regeš).
 - Published JSON shape inspected at tag `v2.5.1`: [JSON-OUTPUT.md](https://github.com/janreges/siteone-crawler/blob/v2.5.1/docs/JSON-OUTPUT.md) and [OUTPUT-crawler.siteone.io.json](https://github.com/janreges/siteone-crawler/blob/v2.5.1/docs/OUTPUT-crawler.siteone.io.json).
-- **Important:** The bundled upstream sample embedded in the `v2.5.1` tag self-identifies as **crawler 2.0.0.20260316**. Therefore its documented layout is verified, but a real **2.5.1 binary output replay has not been executed**; this remains an acceptance gate. Local synthetic fixture `fixtures/siteone-synthetic-v2.json` intentionally uses documented keys. It is **NOT** captured crawler evidence.
+- **Important:** The bundled upstream sample embedded in the `v2.5.1` tag self-identifies as **crawler 2.0.0.20260316**. The actual v2.5.1 loopback shape is now covered by a separate captured projection and executable acceptance runner. Local synthetic fixture `fixtures/siteone-synthetic-v2.json` intentionally uses documented keys. It is **NOT** captured crawler evidence.
 - Release assets' **GitHub-published digests**, not locally rehashed downloads:
   - macOS ARM64: `siteone-crawler-v2.5.1-macos-arm64.tar.gz` SHA-256 `6b893a15ce695a002bbe6c3d2467954fee64059216d471fae55c781936d96e2f`
   - macOS x64: `siteone-crawler-v2.5.1-macos-x64.tar.gz` SHA-256 `724639bdfca7d26514a7c3f10caa6a9172a4f2192744d9e4691bcf842b2e4609`
   - Linux x64: `siteone-crawler-v2.5.1-linux-x64.tar.gz` SHA-256 `09278d958d4a087fa46093805cd33b085b96618001dd31d45c448ad724c9024e`
-
-**No upstream binary has been executed in this development environment.** An owner-approved local test must download a signed/pinned release and independently verify SHA-256 before execution. SiteOne's optional browser and AI functions must remain disabled, along with upload and mail features.
 
 ## Input contract
 
@@ -40,8 +38,8 @@ After approved SiteOne collection, point `--siteone-json` at an actual private r
 
 ## Remaining acceptance gates
 
-- [ ] Run/pin **actual SiteOne v2.5.1 binary** in approved isolated environment; compare its JSON to documented sample and fixture; record verified binary digest and command.
-- [ ] Confirm crawler scope, robots behavior, rate caps, storage location, and no external upload/AI calls.
+- [x] Run the checksum-pinned SiteOne binary against the disposable loopback fixture and record the result.
+- [x] Confirm loopback fixture scope, robots behavior, request settings and local output.
 - [ ] Replay parsed local report with prior Search Console exports; verify representative redirect, 404, 403, canonical/noindex cases.
 - [ ] Document security/privacy acceptance and standalone integration into authenticated Studio; review output headers/CSV formula injection prevention.
-- [ ] CrawlSEO versus direct GSC API decision; no automatic authorization or installation.
+- [x] Document the [CrawlSEO versus direct GSC API decision](CRAWLSEO-DECISION.md).

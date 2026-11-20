@@ -84,7 +84,7 @@ python3 -m unittest discover -s tests -v
 
 With an independently approved real SiteOne report, set `--siteone-json` to the private JSON file, `--property` to the exact authorized HTTPS origin, `--output-dir` to a **private path outside Git**, and optionally `--studio-inventory` to the existing v0.1 `seo-url-inventory.csv`. Outputs include the immutable source digest, provenance receipt, normalized JSON observations and optional reconciliation CSV. Do not publish owner-specific outputs.
 
-**Upstream v2.5.1 binary has not been executed or accepted.** CI uses a synthetic fixture; the documentation example included in SiteOne's v2.5.1 tag self-reports an older v2.0.0 crawler build. Production and third-party crawler integration remain **NO-GO**.
+**SiteOne v2.5.1 passed isolated loopback acceptance.** Hosted CI uses synthetic inputs and a projection captured from the verified crawler. See [SiteOne acceptance](docs/SITEONE-ACCEPTANCE.md).
 
 ## Approved hybrid build map (2026-11-20)
 
@@ -97,3 +97,7 @@ See [BUILD_MAP.md](BUILD_MAP.md). Next: **SC-SEO-02.1** imports version-pinned S
 - [Search Console API](https://developers.google.com/webmaster-tools/v1/api_reference_index)
 - [URL Inspection API](https://developers.google.com/webmaster-tools/v1/urlInspection.index/inspect)
 - [Search Console page indexing](https://support.google.com/webmasters/answer/7440203)
+
+## SC-SEO-02.1C/D · Technical evidence in Studio
+
+The existing dashboard can import SiteOne JSON, XML sitemap documents, captured HTML bodies and authorized local publication metadata alongside Google exports and HTTP audit TSVs. See [the evidence contract and inputs](docs/EVIDENCE-HISTORY.md), [SiteOne acceptance](docs/SITEONE-ACCEPTANCE.md) and [the CrawlSEO decision](docs/CRAWLSEO-DECISION.md).
