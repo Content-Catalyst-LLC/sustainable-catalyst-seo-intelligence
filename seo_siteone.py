@@ -14,10 +14,10 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit, urljoin
 
 SCHEMA = "seo.url-observation.v1"
-ADAPTER = "0.1.0"
+ADAPTER = "0.2.0"
 MAX_BYTES = 64 * 1024 * 1024
 MAX_RECORDS = 100_000
 MAX_URL = 4096
@@ -39,39 +39,44 @@ def utc_timestamp(value: str | None) -> str:
     return result.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def property_host(property_url: str) -> str:
+def property_origin(property_url: str) -> str:
     try:
         parts = urlsplit(property_url)
         host = parts.hostname
-        if parts.scheme != "https" or not host or parts.username or parts.password or parts.port not in (None, 443):
-            raise ImportErrorEvidence("Property must be an HTTPS origin without credentials or a nonstandard port")
-        if parts.path not in ("", "/") or parts.query or parts.fragment:
-            raise ImportErrorEvidence("Property must be an HTTPS origin with no path/query/fragment")
-        return host.lower()
+        loopback_fixture = parts.scheme == "http" and host == "127.0.0.1" and parts.port == 18765
+        valid_https = parts.scheme == "https" and parts.port in (None, 443)
+        if (not host or not (valid_https or loopback_fixture) or parts.username is not None
+                or parts.password is not None or parts.path not in ("", "/")
+                or parts.query or parts.fragment
+                or not re.fullmatch(r"[a-z0-9.-]+", host)
+                or any(c.isspace() for c in property_url)):
+            raise ValueError
+        return "http://127.0.0.1:18765/" if loopback_fixture else f"https://{host}/"
     except ValueError as exc:
-        raise ImportErrorEvidence("Invalid property URL") from exc
+        raise ImportErrorEvidence("Expected an HTTPS origin or the dedicated loopback fixture origin") from exc
 
 
 def url_key(url: str, property_url: str) -> str | None:
-    """Conservative URL comparison key: keep path/query case and percent encodings.
-
-    Only normalize scheme, host and the default root path. Never drop query strings.
-    """
-    if not isinstance(url, str) or not url or len(url) > MAX_URL or any(ord(c) < 32 for c in url):
+    """Keep path/query case and encodings. Map same-host HTTP to the HTTPS property."""
+    if not isinstance(url, str) or not url or len(url) > MAX_URL:
+        return None
+    if any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url) or "\\" in url:
         return None
     try:
         u = urlsplit(url)
-        host = property_host(property_url)
-        if u.scheme.lower() not in ("http", "https") or not u.hostname or u.hostname.lower() != host:
+        scope = urlsplit(property_origin(property_url))
+        if u.hostname != scope.hostname or u.username is not None or u.password is not None:
             return None
-        if u.username or u.password or u.port not in (None, 80, 443):
+        if scope.scheme == "http":
+            if u.scheme != scope.scheme or u.port != scope.port:
+                return None
+        elif u.scheme not in ("http", "https") or u.port not in (None, 80 if u.scheme == "http" else 443):
             return None
-        # Exclude fragments from comparison; queries remain meaningful.
         path = u.path or "/"
-        if not path.startswith("/") or re.search(r"/(?:\.\.?)(?:/|$)", path):
+        if not path.startswith("/") or re.search(r"/(?:\.|%2e){1,2}(?:/|$)", path, re.I):
             return None
-        return urlunsplit(("https", host, path, u.query, ""))
-    except (ValueError, ImportErrorEvidence):
+        return urlunsplit((scope.scheme, scope.netloc, path, u.query, ""))
+    except ValueError:
         return None
 
 
@@ -80,7 +85,10 @@ def load_source(path: Path) -> tuple[dict, str]:
         raise ImportErrorEvidence("SiteOne input file not found")
     if path.stat().st_size > MAX_BYTES:
         raise ImportErrorEvidence(f"SiteOne report exceeds {MAX_BYTES} byte ingestion limit")
-    data = path.read_bytes()
+    with path.open("rb") as stream:
+        data = stream.read(MAX_BYTES + 1)
+    if len(data) > MAX_BYTES:
+        raise ImportErrorEvidence("SiteOne report exceeds ingestion limit")
     sha = hashlib.sha256(data).hexdigest()
     try:
         obj = json.loads(data)
@@ -119,14 +127,41 @@ def relative_row_url(value: object, property_url: str) -> str | None:
     return url_key(value, property_url)
 
 
+def safe_target(value):
+    if not isinstance(value, str) or len(value) > MAX_URL or "\\" in value:
+        return None
+    if any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in value):
+        return None
+    try:
+        parts = urlsplit(value)
+        if (parts.scheme in ("http", "https") and parts.hostname
+                and parts.username is None and parts.password is None):
+            return value
+    except ValueError:
+        pass
+    return None
+
+
+def resolve_target(base, value):
+    if not value or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in value):
+        return None
+    try:
+        return safe_target(urljoin(base, value))
+    except ValueError:
+        return None
+
+
+def scalar(value, types):
+    return value if type(value) in types else None
+
+
 def parse_report(path: Path, property_url: str, imported_at: str | None = None) -> dict:
     """Parse one immutable local report; do not assert crawl time zone.
 
     Source executedAt has a *naive local* time in upstream JSON docs and is
     intentionally retained as raw. import time UTC is different evidence.
     """
-    host = property_host(property_url)
-    property_url = f"https://{host}/"
+    property_url = property_origin(property_url)
     imported_utc = utc_timestamp(imported_at)
     data, sha = load_source(path)
     crawler = data["crawler"]
@@ -141,6 +176,16 @@ def parse_report(path: Path, property_url: str, imported_at: str | None = None) 
     seo_by_key: dict[str, dict] = {}
     redirects: dict[str, str] = {}
     warnings: list[str] = []
+    relationships = []
+    for table, relation in (("404", "broken_link"), ("redirects", "redirect_source")):
+        for index, row in enumerate(table_rows(data, table)):
+            if not isinstance(row, dict):
+                raise ImportErrorEvidence(f"Invalid SiteOne {table} row")
+            source = relative_row_url(row.get("sourceUqId"), property_url)
+            target = relative_row_url(row.get("url"), property_url)
+            if source and target:
+                relationships.append((relation, index, source, target))
+
     for row in table_rows(data, "seo"):
         if not isinstance(row, dict):
             raise ImportErrorEvidence("Invalid SiteOne seo row")
@@ -153,20 +198,19 @@ def parse_report(path: Path, property_url: str, imported_at: str | None = None) 
         if not isinstance(row, dict):
             raise ImportErrorEvidence("Invalid SiteOne redirect row")
         key = relative_row_url(row.get("url"), property_url)
-        target = relative_row_url(row.get("targetUrl"), property_url)
-        # External redirect targets are retained only when absolute HTTP(S) URL,
-        # never treated as crawled in-scope pages.
-        external_target = row.get("targetUrl")
-        if key and not target and isinstance(external_target, str):
-            u = urlsplit(external_target)
-            if u.scheme in ("http", "https") and u.hostname and not (u.username or u.password):
-                target = external_target
+        raw_target = row.get("targetUrl")
+        target = None
+        if key and isinstance(raw_target, str) and raw_target:
+            resolved = resolve_target(key, raw_target)
+            if resolved:
+                target = url_key(resolved, property_url) or resolved
         if key and target:
             redirects[key] = target
 
     observations = []
     rejected = Counter()
     seen = set()
+    valid_statuses = {str(n) for n in range(100, 600)}
     for index, row in enumerate(data["results"]):
         if not isinstance(row, dict):
             rejected["non_object"] += 1
@@ -178,7 +222,7 @@ def parse_report(path: Path, property_url: str, imported_at: str | None = None) 
             continue
         status = row.get("status")
         if status is not None:
-            if isinstance(status, bool) or str(status) not in {str(n) for n in range(100, 600)}:
+            if isinstance(status, bool) or str(status) not in valid_statuses:
                 rejected["invalid_http_status"] += 1
                 continue
             status = int(status)
@@ -207,9 +251,9 @@ def parse_report(path: Path, property_url: str, imported_at: str | None = None) 
             "redirect_target_url": redirects.get(key),  # a hop, not proven final URL
             "content_type_code": row.get("type") if isinstance(row.get("type"), int) and not isinstance(row.get("type"), bool) else None,
             "declared_canonical": None,  # not present in documented results/seo rows
-            "robots_index_raw": meta.get("robotsIndex"),
-            "robots_indexing_raw": meta.get("indexing"),
-            "robots_denied_raw": meta.get("deniedByRobotsTxt"),
+            "robots_index_raw": scalar(meta.get("robotsIndex"), (str, int, bool)),
+            "robots_indexing_raw": scalar(meta.get("indexing"), (str,)),
+            "robots_denied_raw": scalar(meta.get("deniedByRobotsTxt"), (str, bool)),
             "sitemap_membership": None,
             "page_title": meta.get("title") if isinstance(meta.get("title"), str) else None,
             "page_description": meta.get("description") if isinstance(meta.get("description"), str) else None,
@@ -236,7 +280,7 @@ def parse_report(path: Path, property_url: str, imported_at: str | None = None) 
         "status_counts": dict(Counter(str(row["http_status"]) if row["http_status"] is not None else "unknown" for row in observations)),
         "does_not_prove_googlebot_or_indexing": True,
     }
-    return {"receipt": receipt, "observations": observations}
+    return {"receipt": receipt, "observations": observations, "relationships": relationships}
 
 
 def csv_safe(value: object) -> str:

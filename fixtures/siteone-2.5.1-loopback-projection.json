@@ -1,0 +1,134 @@
+{
+  "crawler": {
+    "name": "SiteOne Crawler",
+    "version": "2.5.1.20260627",
+    "executedAt": "2026-11-20 17:28:45"
+  },
+  "results": [
+    {
+      "url": "http://127.0.0.1:18765/",
+      "status": "200",
+      "type": 1
+    },
+    {
+      "url": "http://127.0.0.1:18765/guide",
+      "status": "200",
+      "type": 1
+    },
+    {
+      "url": "http://127.0.0.1:18765/sitemap.xml",
+      "status": "200",
+      "type": 12
+    },
+    {
+      "url": "http://127.0.0.1:18765/forbidden",
+      "status": "403",
+      "type": 7
+    },
+    {
+      "url": "http://127.0.0.1:18765/noindex",
+      "status": "200",
+      "type": 1
+    },
+    {
+      "url": "http://127.0.0.1:18765/old",
+      "status": "301",
+      "type": 9
+    },
+    {
+      "url": "http://127.0.0.1:18765/missing",
+      "status": "404",
+      "type": 7
+    }
+  ],
+  "tables": {
+    "seo": {
+      "rows": [
+        {
+          "deniedByRobotsTxt": "false",
+          "description": "",
+          "h1": "SEO fixture heading",
+          "indexing": "",
+          "keywords": "",
+          "robotsIndex": "1",
+          "title": "SEO fixture",
+          "urlPathAndQuery": "/"
+        },
+        {
+          "deniedByRobotsTxt": "false",
+          "description": "",
+          "h1": "SEO fixture heading",
+          "indexing": "",
+          "keywords": "",
+          "robotsIndex": "1",
+          "title": "SEO fixture",
+          "urlPathAndQuery": "/guide"
+        },
+        {
+          "deniedByRobotsTxt": "false",
+          "description": "",
+          "h1": "",
+          "indexing": "",
+          "keywords": "",
+          "robotsIndex": "0",
+          "title": "SEO fixture",
+          "urlPathAndQuery": "/noindex"
+        }
+      ]
+    },
+    "redirects": {
+      "rows": [
+        {
+          "sourceUqId": "http://127.0.0.1:18765/",
+          "statusCode": "301",
+          "targetUrl": "/guide",
+          "url": "http://127.0.0.1:18765/old"
+        }
+      ]
+    },
+    "404": {
+      "rows": [
+        {
+          "sourceUqId": "http://127.0.0.1:18765/",
+          "statusCode": "404",
+          "url": "http://127.0.0.1:18765/missing"
+        }
+      ]
+    },
+    "seo-headings": {
+      "rows": [
+        {
+          "headings": "<h1> SEO fixture heading",
+          "headingsCount": "1",
+          "headingsErrorsCount": "0",
+          "headingsHtml": "<ul><li>&lt;h1&gt; SEO fixture heading</li></ul>",
+          "urlPathAndQuery": "/"
+        },
+        {
+          "headings": "<h1> SEO fixture heading",
+          "headingsCount": "1",
+          "headingsErrorsCount": "0",
+          "headingsHtml": "<ul><li>&lt;h1&gt; SEO fixture heading</li></ul>",
+          "urlPathAndQuery": "/guide"
+        },
+        {
+          "headings": "",
+          "headingsCount": "0",
+          "headingsErrorsCount": "0",
+          "headingsHtml": "<ul></ul>",
+          "urlPathAndQuery": "/noindex"
+        }
+      ]
+    },
+    "skipped": {
+      "rows": [
+        {
+          "reason": "Robots.txt",
+          "sourceAttr": "<a href>",
+          "sourceUqId": "/",
+          "url": "/denied"
+        }
+      ]
+    }
+  }
+}
