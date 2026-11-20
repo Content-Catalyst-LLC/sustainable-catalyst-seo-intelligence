@@ -20,3 +20,7 @@ python3 -m unittest discover -s tests -v
 ```
 
 The Nov. 20 capture shows 14 fields, 170 map panels, and 179 distinct article targets in the embedded registry. The initial body links to 14 map destinations and 32 of the article targets. The captured link graph does not prove sitewide orphaning. Repeat this check with authorized archives and representative Article Map responses before using missing-path counts as a sitewide measure. The evidence supports a discoverability improvement on the hub. It does not establish why the historical Google indexed count fell.
+
+## Compare two captures from the same staging hub
+
+Create an initial discovery JSON from the baseline HTML. Run the same command against the proposed HTML and pass `--publication-baseline /private/baseline/seo-publication-discovery.json`. Both snapshots must use the same property and hub. The dashboard shows the link deltas and the private comparison JSON includes per-field coverage, exact map route changes, canonical and robots comparisons, and shortest observed capture-graph depth. A missing path stays unknown. Compare staging before and after as a pair. Treat the earlier production capture as a separate baseline with a different content cohort.

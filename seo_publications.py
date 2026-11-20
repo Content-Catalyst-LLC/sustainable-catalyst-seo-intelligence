@@ -147,13 +147,16 @@ def analyze_publications(sources, rendered_sources, evidence):
                          "articles_linked_from_map_snapshot": (
                              sorted(set(urls) & map_snapshot.links) if map_snapshot else None)})
     graph = {url: sorted(page.links) for url, page in raw_pages.items()}
-    reachable = {hub}
+    depth = {hub: 0}
     pending = deque([hub])
     while pending:
-        for dest in graph.get(pending.popleft(), []):
-            if dest not in reachable:
-                reachable.add(dest)
+        source = pending.popleft()
+        for dest in graph.get(source, []):
+            if dest not in depth:
+                depth[dest] = depth[source] + 1
                 pending.append(dest)
+    for map_row in maps:
+        map_row["observed_depth"] = depth.get(map_row["url"])
     rendered = rendered_pages.get(hub)
     by_url = {page["url"]: page for page in evidence["pages"]}
     observations = []
@@ -166,7 +169,7 @@ def analyze_publications(sources, rendered_sources, evidence):
         observations.append({
             "url": url, "map_ids": sorted(article_to_maps[url]),
             "hub_main_anchor": url in observed.main_links, "hub_document_anchor": url in observed.links,
-            "reachable_in_captured_graph": url in reachable,
+            "reachable_in_captured_graph": url in depth, "observed_depth": depth.get(url),
             "rendered_hub_anchor": url in rendered.links if rendered else None,
             "sitemap_member": page.get("sitemap_member"),
             "canonical_declared_in_capture": declarations,
@@ -219,3 +222,58 @@ def analyze_publications(sources, rendered_sources, evidence):
                 "parameter_variants": len(variants), "initial_snapshots": len(raw_pages),
                 "rendered_snapshots": len(rendered_pages),
             }}
+
+
+def compare_publication_discovery(baseline, proposed):
+    """Compare the same property and hub. Unknown observed depth stays null."""
+    if (baseline.get("schema_version") != SCHEMA or proposed.get("schema_version") != SCHEMA
+            or baseline.get("hub") != proposed.get("hub")):
+        raise ImportErrorEvidence("Comparison requires same-hub publication discovery v1 reports")
+
+    def compare_rows(before, after, identity):
+        old = {r[identity]: r for r in before}
+        new = {r[identity]: r for r in after}
+        return [{
+            "id": key,
+            "before_url": old.get(key, {}).get("url"),
+            "after_url": new.get(key, {}).get("url"),
+            "before_main_anchor": old.get(key, {}).get("hub_main_anchor"),
+            "after_main_anchor": new.get(key, {}).get("hub_main_anchor"),
+            "before_depth": old.get(key, {}).get("observed_depth"),
+            "after_depth": new.get(key, {}).get("observed_depth"),
+        } for key in sorted(old.keys() | new.keys())]
+
+    map_rows = compare_rows(baseline["maps"], proposed["maps"], "id")
+    articles = compare_rows(baseline["articles"], proposed["articles"], "url")
+    field_coverage = []
+    for field in sorted({m["field"] for p in (baseline, proposed) for m in p["maps"]}):
+        counts = []
+        for data in (baseline, proposed):
+            maps = [m for m in data["maps"] if m["field"] == field]
+            targets = {url for m in maps for url in m["article_urls"]}
+            articles_by_url = {a["url"]: a for a in data["articles"]}
+            counts.append({
+                "map_panels": len(maps),
+                "maps_with_main_anchor": sum(m["hub_main_anchor"] for m in maps),
+                "article_targets": len(targets),
+                "articles_with_main_anchor": sum(articles_by_url[u]["hub_main_anchor"] for u in targets),
+            })
+        field_coverage.append({"field": field, "before": counts[0], "after": counts[1]})
+    return {
+        "schema_version": "seo.publication-comparison.v1",
+        "hub": proposed["hub"],
+        "source_artifacts": {"before": baseline["artifacts"], "after": proposed["artifacts"]},
+        "counts_before": baseline["summary"],
+        "counts_after": proposed["summary"],
+        "observed_hub_canonical_before": baseline["hub_canonicals"],
+        "observed_hub_canonical_after": proposed["hub_canonicals"],
+        "observed_hub_robots_before": baseline["hub_robots_meta"],
+        "observed_hub_robots_after": proposed["hub_robots_meta"],
+        "changed_map_urls": sum(r["before_url"] != r["after_url"] for r in map_rows),
+        "duplicate_map_urls": {"before": baseline["duplicate_map_url_counts"],
+                               "after": proposed["duplicate_map_url_counts"]},
+        "map_depths": map_rows,
+        "article_depths": articles,
+        "field_coverage": field_coverage,
+        "scope_note": "Capture-graph depth and link coverage only. Sitewide orphaning is unknown.",
+    }
