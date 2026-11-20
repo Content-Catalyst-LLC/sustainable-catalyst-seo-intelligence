@@ -21,7 +21,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 from seo_evidence import EvidenceHistory, source_bytes
-from seo_publications import analyze_publications
+from seo_publications import analyze_publications, compare_publication_discovery
 from seo_siteone import csv_safe, parse_report, property_origin, url_key
 
 VERSION = "0.1.0"
@@ -409,6 +409,11 @@ review.append(el("p",s.article_targets_without_path_in_captures+" targets withou
 const details=el("details");details.append(el("summary","Article link and evidence inventory"));
 for(const a of p.articles) details.append(el("p",a.url+" · "+(a.hub_main_anchor?"hub link":"no initial main link")+" · sitemap "+(a.sitemap_member===true?"listed":"unknown")+" · "+(a.google_export_classes.join(", ")||"no Google export observation")));
 review.append(details);
+if(d.publication_comparison){
+const c=d.publication_comparison, before=c.counts_before, after=c.counts_after;
+review.append(el("p","Map links "+before.maps_linked_in_initial_main+" → "+after.maps_linked_in_initial_main+
+" · Article links "+before.articles_linked_in_initial_main+" → "+after.articles_linked_in_initial_main));
+}
 }
 const evidence=d.evidence_history;
 const health=document.getElementById("health"), validation=document.getElementById("validation");
@@ -485,6 +490,9 @@ def save_report(report: dict, output: Path) -> None:
     if "publication_discovery" in report:
         (output / "seo-publication-discovery.json").write_text(
             json.dumps(report["publication_discovery"], ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if "publication_comparison" in report:
+        (output / "seo-publication-comparison.json").write_text(
+            json.dumps(report["publication_comparison"], ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     write_csv(output / "seo-url-inventory.csv", report["inventory"],
               ["priority", "url", "indexing_status", "type", "last_crawl",
                "http_status", "redirect_count", "final_url", "action"])
@@ -510,6 +518,7 @@ def main(argv=None) -> int:
     cli.add_argument("--sitemap-xml", type=Path, action="append", default=[])
     cli.add_argument("--html-response", nargs=2, metavar=("URL", "FILE"), action="append", default=[],
                      help="Trusted local capture of a URL's HTML response body")
+    cli.add_argument("--publication-baseline", type=Path, help="Local discovery report to compare against")
     cli.add_argument("--publication-hub-html", type=Path, help="Captured initial HTML for /publications/")
     cli.add_argument("--publication-rendered-html", nargs=2, metavar=("URL", "FILE"), action="append", default=[])
     cli.add_argument("--publications-json", type=Path, help="Explicitly authorized local publication metadata")
@@ -547,6 +556,10 @@ def main(argv=None) -> int:
                  *((url, Path(path)) for url, path in args.html_response)],
                 [(url, Path(path)) for url, path in args.publication_rendered_html],
                 report["evidence_history"])
+            if args.publication_baseline:
+                baseline = json.loads(source_bytes(args.publication_baseline))
+                report["publication_comparison"] = compare_publication_discovery(
+                    baseline, report["publication_discovery"])
         except (ValueError, OSError) as exc:
             cli.error(str(exc))
     save_report(report, args.output_dir.expanduser().resolve())

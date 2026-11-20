@@ -2,7 +2,7 @@ name: SC-SEO-02 synthetic tests
 
 on:
   pull_request:
-    branches: [main, feature/sc-seo-02-initial-studio, codex/sc-seo-02-1cd, codex/sc-seo-02-public-crawl, codex/sc-seo-02-1e]
+    branches: [main, feature/sc-seo-02-initial-studio, codex/sc-seo-02-1cd, codex/sc-seo-02-public-crawl, codex/sc-seo-02-1e, codex/sc-seo-03-publications]
     paths:
       - 'seo_*.py'
       - 'contracts/**'

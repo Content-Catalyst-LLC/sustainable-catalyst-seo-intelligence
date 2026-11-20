@@ -57,3 +57,29 @@ class PublicationsTests(unittest.TestCase):
                 analyze_publications([(HUB, page)], [], evidence)
             with self.assertRaisesRegex(ImportErrorEvidence, "distinct"):
                 analyze_publications([(HUB, page), (HUB, page)], [], evidence)
+
+    def test_comparison_preserves_unknown_depth_and_observed_canonical(self):
+        from seo_publications import compare_publication_discovery
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first, second, map_page = (root / name for name in ("before.html", "after.html", "map.html"))
+            payload = {"field": {"key": "field", "panels": [
+                {"key": "map", "canonical_url": "/map/", "articles": [{"url": "/article/"}]},
+                {"key": "unknown", "canonical_url": "/pending/", "articles": [{"url": "/pending-article/"}]},
+            ]}}
+            scaffold = '<head><link rel="canonical" href="/publications/"></head><main>' + (
+                '<script type="application/json">' + json.dumps(payload) + '</script>')
+            first.write_text(scaffold + '<a href="/map/">Map</a></main>')
+            second.write_text(scaffold + '<a href="/map/">Map</a><a href="/article/">Article</a></main>')
+            map_page.write_text('<main><a href="/article/">Article</a></main>')
+            evidence = {"property_scope": ORIGIN, "pages": []}
+            old = analyze_publications([(HUB, first), (ORIGIN + "map/", map_page)], [], evidence)
+            new = analyze_publications([(HUB, second), (ORIGIN + "map/", map_page)], [], evidence)
+            comparison = compare_publication_discovery(old, new)
+            rows = {row["id"]: row for row in comparison["article_depths"]}
+            self.assertEqual(rows[ORIGIN + "article/"]["before_depth"], 2)
+            self.assertEqual(rows[ORIGIN + "article/"]["after_depth"], 1)
+            self.assertIsNone(rows[ORIGIN + "pending-article/"]["after_depth"])
+            self.assertEqual(comparison["observed_hub_canonical_before"], comparison["observed_hub_canonical_after"])
+            self.assertEqual(comparison["changed_map_urls"], 0)
+            self.assertEqual(comparison["field_coverage"][0]["after"]["articles_with_main_anchor"], 1)
