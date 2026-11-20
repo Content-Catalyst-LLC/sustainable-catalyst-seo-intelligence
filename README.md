@@ -68,15 +68,9 @@ python3 -m py_compile seo_studio.py
 
 A folder named data/ in a public repository is NOT private. Our .gitignore prevents accidental commits but cannot remove secrets already committed. Never commit credentials, access tokens, private keys, personal information, or unapproved licensed data even to a private repository; use a secrets manager for credentials.
 
-## Proposed later phases
+## Approved hybrid build map (2026-11-20)
 
-**SC-SEO-02.1:** Authenticated Workspace / Publication Studio integration and durable provenance receipts.
-
-**SC-SEO-02.2:** Authorized, quota-aware Search Console API and WordPress read APIs; export-import fallback retained.
-
-**SC-SEO-02.3:** Matched indexed/unindexed publication quality reviews, original research evidence and knowledge graph context.
-
-**SC-SEO-02.4:** Approved remediation and recovery monitoring with explicit owner signoff, tests and rollback gates.
+See [BUILD_MAP.md](BUILD_MAP.md). Next: **SC-SEO-02.1** imports version-pinned SiteOne crawl JSON, establishes a typed evidence/provenance contract, and evaluates CrawlSEO versus a small official GSC read-only adapter in isolated staging. SiteOne and CrawlSEO are **not yet installed or integrated**. Following milestones: **02.2** authenticated Workspace/Publication Studio, **02.3** publication quality, **02.4** recovery/monitoring, **02.5** optional competitive intelligence.
 
 **Current release gate: PROTOTYPE — production NO-GO.** No automated Google validation, content changes, redirects, bulk publishing, access-control changes, or account mutations are supported.
 
