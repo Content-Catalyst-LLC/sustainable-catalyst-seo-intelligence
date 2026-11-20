@@ -45,6 +45,8 @@ GSC exports / optional official API  +  SiteOne JSON  +  WordPress read-only
 
 **Never collapse Google's past indexed-version classification into a current SiteOne/ordinary HTTP result.** An ordinary HTTP 200 does not demonstrate verified Googlebot access or Google indexing. Missing facts stay explicitly unknown. Similar slugs and 'crawled—not indexed' do not prove duplicate/low-quality content.
 
+**Implementation tracker:** [SC-SEO-02.1 issue #2](https://github.com/Content-Catalyst-LLC/sustainable-catalyst-seo-intelligence/issues/2).
+
 ## Immediate engineering sequence
 
 1. Review and accept v0.1.0 source PR and private evidence boundaries.
