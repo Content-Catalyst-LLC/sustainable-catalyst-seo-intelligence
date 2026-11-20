@@ -68,6 +68,24 @@ python3 -m py_compile seo_studio.py
 
 A folder named data/ in a public repository is NOT private. Our .gitignore prevents accidental commits but cannot remove secrets already committed. Never commit credentials, access tokens, private keys, personal information, or unapproved licensed data even to a private repository; use a secrets manager for credentials.
 
+## SC-SEO-02.1 — SiteOne adapter (draft PR #3)
+
+Read-only, offline ingestion of a SiteOne JSON report into the versioned URL-observation evidence contract. It **does not run SiteOne, crawl a site, authenticate to Google, or modify WordPress**. For upstream release pin, observed JSON fields, source-time caveats, and acceptance gates, see [docs/SITEONE-ADAPTER.md](docs/SITEONE-ADAPTER.md).
+
+~~~bash
+python3 seo_siteone.py \\
+  --siteone-json fixtures/siteone-synthetic-v2.json \\
+  --property https://example.test/ \\
+  --imported-at 2026-11-20T12:31:00Z \\
+  --output-dir /tmp/sc-seo-02-siteone-synthetic
+
+python3 -m unittest discover -s tests -v
+~~~
+
+With an independently approved real SiteOne report, set `--siteone-json` to the private JSON file, `--property` to the exact authorized HTTPS origin, `--output-dir` to a **private path outside Git**, and optionally `--studio-inventory` to the existing v0.1 `seo-url-inventory.csv`. Outputs include the immutable source digest, provenance receipt, normalized JSON observations and optional reconciliation CSV. Do not publish owner-specific outputs.
+
+**Upstream v2.5.1 binary has not been executed or accepted.** CI uses a synthetic fixture; the documentation example included in SiteOne's v2.5.1 tag self-reports an older v2.0.0 crawler build. Production and third-party crawler integration remain **NO-GO**.
+
 ## Approved hybrid build map (2026-11-20)
 
 See [BUILD_MAP.md](BUILD_MAP.md). Next: **SC-SEO-02.1** imports version-pinned SiteOne crawl JSON, establishes a typed evidence/provenance contract, and evaluates CrawlSEO versus a small official GSC read-only adapter in isolated staging. SiteOne and CrawlSEO are **not yet installed or integrated**. Following milestones: **02.2** authenticated Workspace/Publication Studio, **02.3** publication quality, **02.4** recovery/monitoring, **02.5** optional competitive intelligence.
