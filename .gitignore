@@ -1,0 +1,26 @@
+# SC-SEO-02 public source; private operational evidence
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+service-account*.json
+token*.json
+SC-SEO-01-*
+SC-SEO-02-*
+output/
+reports/
+private/
+data/
+*.xlsx
+*.xls
+*.tsv
+!tests/fixtures/*.tsv
+!tests/fixtures/*.csv
+.DS_Store
