@@ -5,6 +5,11 @@ on:
     branches: [main]
     paths:
       - 'seo_studio.py'
+      - 'seo_siteone.py'
+      - 'contracts/**'
+      - 'fixtures/**'
+      - 'docs/**'
+      - 'README.md'
       - 'tests/**'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
@@ -22,7 +27,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Syntax
-        run: python3 -m py_compile seo_studio.py
+        run: python3 -m py_compile seo_studio.py seo_siteone.py
       - name: Synthetic unit tests
         run: python3 -m unittest discover -s tests -v
       - name: Check no real exports or local reports are tracked
