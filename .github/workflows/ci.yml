@@ -1,0 +1,35 @@
+name: SC-SEO-02 synthetic tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'seo_studio.py'
+      - 'tests/**'
+      - '.github/workflows/ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Syntax
+        run: python3 -m py_compile seo_studio.py
+      - name: Synthetic unit tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Check no real exports or local reports are tracked
+        shell: bash
+        run: |
+          if git ls-files | grep -E '(^data/|^output/|^private/|\.(xlsx|xls|tsv)$|\.env$|^reports/)'; then
+            echo 'Unexpected private or exported file tracked' >&2
+            exit 1
+          fi
+          echo 'No private export paths tracked'
