@@ -21,7 +21,7 @@ This is an **offline prototype**; it is not deployed and does not perform a fres
 Requires Python 3.10 or newer. Store the actual Search Console exports in a local folder such as Downloads, not inside this public Git checkout.
 
 ~~~bash
-git clone https://github.com/Content-Catalyst-LLC/sustainable-catalyst-seo-intelligence.git
+git clone --branch feature/sc-seo-02-initial-studio https://github.com/Content-Catalyst-LLC/sustainable-catalyst-seo-intelligence.git
 cd sustainable-catalyst-seo-intelligence
 python3 seo_studio.py --input-dir ~/Downloads \
   --output-dir ~/Downloads/SC-SEO-02-private-report \
