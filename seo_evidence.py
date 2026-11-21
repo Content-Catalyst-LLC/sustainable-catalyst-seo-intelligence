@@ -146,6 +146,13 @@ class EvidenceHistory:
             for key in ("publicly_viewable", "password_protected", "exact_permalink"):
                 if type(row.get(key)) is bool:
                     facts[key] = row[key]
+            if isinstance(row.get("approved_map_urls"), list):
+                facts["approved_map_urls"] = sorted({
+                    url for url in row["approved_map_urls"]
+                    if isinstance(url, str) and url_key(url, self.scope) == url
+                })
+            if isinstance(row.get("inventory_observed_at"), str):
+                facts["inventory_observed_at"] = utc_timestamp(row["inventory_observed_at"])
             self.add("wordpress", digest, index, row["url"], facts, observed)
 
     def build(self):
