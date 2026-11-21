@@ -39,6 +39,10 @@ class PublicationsTests(unittest.TestCase):
             a, b, c = (rows[ORIGIN + key + "/"] for key in "abc")
             self.assertTrue(a["hub_main_anchor"])
             self.assertTrue(b["reachable_in_captured_graph"])
+            self.assertEqual(b["incoming_initial_html_sources"], [ORIGIN + "map/"])
+            self.assertEqual(b["sitemap_membership_status"], "listed")
+            self.assertTrue(c["no_incoming_link_in_captures"])
+            self.assertEqual(c["sitemap_membership_status"], "unknown")
             self.assertFalse(b["hub_main_anchor"])
             self.assertEqual(b["google_export_classes"], ["unindexed"])
             self.assertTrue(b["sitemap_member"])
@@ -83,3 +87,30 @@ class PublicationsTests(unittest.TestCase):
             self.assertEqual(comparison["observed_hub_canonical_before"], comparison["observed_hub_canonical_after"])
             self.assertEqual(comparison["changed_map_urls"], 0)
             self.assertEqual(comparison["field_coverage"][0]["after"]["articles_with_main_anchor"], 1)
+
+    def test_link_review_requires_explicit_publication_and_canonical_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            urls = [HUB, ORIGIN + "map/", ORIGIN + "article/"]
+            files = [root / f"{i}.html" for i in range(3)]
+            for path, url in zip(files, urls):
+                path.write_text(f'<head><link rel="canonical" href="{url}"></head><main></main>')
+            with files[0].open("a") as stream:
+                data = {"field": {"key": "a", "panels": [{"key": "one", "canonical_url": urls[1],
+                         "articles": [{"url": urls[2]}]}]}}
+                stream.write('<script type="application/json">' + json.dumps(data) + '</script>')
+            evidence = {"property_scope": ORIGIN, "pages": []}
+            self.assertEqual(analyze_publications(list(zip(urls, files)), [], evidence)["link_review_candidates"], [])
+            for url in urls[1:]:
+                evidence["pages"].append({"url": url, "observations": [{"source_kind": "wordpress",
+                    "observation_id": url, "facts": {"status": "publish", "publicly_viewable": True,
+                    "password_protected": False, "exact_permalink": True}}]})
+            self.assertEqual(len(analyze_publications(list(zip(urls, files)), [], evidence)["link_review_candidates"]), 2)
+            evidence["pages"][1]["observations"][0]["facts"]["password_protected"] = True
+            self.assertEqual(analyze_publications(list(zip(urls, files)), [], evidence)["link_review_candidates"], [])
+            evidence["pages"][1]["observations"][0]["facts"]["password_protected"] = False
+            files[2].write_text('<head><link rel="canonical" href="/other/"></head>')
+            self.assertEqual(analyze_publications(list(zip(urls, files)), [], evidence)["link_review_candidates"], [])
+            files[2].write_text(f'<head><link rel="canonical" href="{urls[2]}">'
+                                '<meta name="robots" content="noindex"></head>')
+            self.assertEqual(analyze_publications(list(zip(urls, files)), [], evidence)["link_review_candidates"], [])

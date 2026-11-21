@@ -157,6 +157,11 @@ def analyze_publications(sources, rendered_sources, evidence):
                 pending.append(dest)
     for map_row in maps:
         map_row["observed_depth"] = depth.get(map_row["url"])
+    incoming = defaultdict(list)
+    for source, destinations in graph.items():
+        for dest in destinations:
+            if source != dest:
+                incoming[dest].append(source)
     rendered = rendered_pages.get(hub)
     by_url = {page["url"]: page for page in evidence["pages"]}
     observations = []
@@ -166,12 +171,16 @@ def analyze_publications(sources, rendered_sources, evidence):
         snapshot = raw_pages.get(url)
         declarations = ([target(url, value, scope) for value in snapshot.canonicals]
                         if snapshot else None)
+        incoming_sources = sorted(incoming[url])
         observations.append({
             "url": url, "map_ids": sorted(article_to_maps[url]),
+            "incoming_initial_html_sources": incoming_sources,
+            "no_incoming_link_in_captures": not incoming_sources,
             "hub_main_anchor": url in observed.main_links, "hub_document_anchor": url in observed.links,
             "reachable_in_captured_graph": url in depth, "observed_depth": depth.get(url),
             "rendered_hub_anchor": url in rendered.links if rendered else None,
             "sitemap_member": page.get("sitemap_member"),
+            "sitemap_membership_status": "listed" if page.get("sitemap_member") else "unknown",
             "canonical_declared_in_capture": declarations,
             "canonical_status": ("unknown" if declarations is None else "self" if declarations == [url]
                                  else "missing" if not declarations else "different_or_multiple"),
@@ -184,6 +193,40 @@ def analyze_publications(sources, rendered_sources, evidence):
                                                        if o["source_kind"] == "wordpress"}),
             "evidence_ids": [o["observation_id"] for o in facts],
         })
+    def verified_link_endpoint(url):
+        snapshot = raw_pages.get(url)
+        if snapshot is None or urlsplit(url).query:
+            return False
+        if len(snapshot.canonicals) != 1 or not snapshot.canonicals[0]:
+            return False
+        try:
+            if urljoin(url, snapshot.canonicals[0]) != url:
+                return False
+        except ValueError:
+            return False
+        if any(re.search(r"\b(?:noindex|none)\b", value or "", re.I) for value in snapshot.robots):
+            return False
+        records = by_url.get(url, {}).get("observations", [])
+        wp = [r["facts"] for r in records if r["source_kind"] == "wordpress"]
+        return bool(wp) and all(
+            r.get("status") == "publish" and r.get("publicly_viewable") is True
+            and r.get("password_protected") is False and r.get("exact_permalink") is True
+            for r in wp
+        )
+
+    suggestions = []
+    for map_row in maps:
+        map_url = map_row["url"]
+        if not verified_link_endpoint(map_url):
+            continue
+        for article in sorted(set(map_row["article_urls"])):
+            if article == map_url or not verified_link_endpoint(article):
+                continue
+            for source, destination in ((map_url, article), (article, map_url)):
+                if destination not in raw_pages[source].main_links:
+                    suggestions.append({"from": source, "to": destination,
+                                        "map_id": map_row["id"], "requires_editorial_review": True})
+
     variants = []
     for url in graph[hub]:
         parts = urlsplit(url)
@@ -208,7 +251,7 @@ def analyze_publications(sources, rendered_sources, evidence):
             "reachable_in_captured_graph": sum(a["reachable_in_captured_graph"] for a in cohort),
         }
     return {"schema_version": SCHEMA, "google_export_cohorts": google_cohorts, "hub": hub, "artifacts": artifacts, "fields": fields, "maps": maps,
-            "parameter_variants": variants, "archive_targets": [f["archive_url"] for f in fields],
+            "link_review_candidates": suggestions, "parameter_variants": variants, "archive_targets": [f["archive_url"] for f in fields],
             "pagination_targets": pagination, "registry_edges": edges, "html_adjacency": graph,
             "articles": observations, "duplicate_map_url_counts": {k:v for k,v in duplicate_maps.items() if v > 1},
             "hub_canonicals": observed.canonicals, "hub_robots_meta": observed.robots,
@@ -219,6 +262,8 @@ def analyze_publications(sources, rendered_sources, evidence):
                 "articles_linked_in_initial_document": sum(a["hub_document_anchor"] for a in observations),
                 "maps_without_article_slots": sum(not m["article_urls"] for m in maps),
                 "article_targets_without_path_in_captures": sum(not a["reachable_in_captured_graph"] for a in observations),
+                "article_targets_without_incoming_capture_link": sum(
+                    a["no_incoming_link_in_captures"] for a in observations),
                 "parameter_variants": len(variants), "initial_snapshots": len(raw_pages),
                 "rendered_snapshots": len(rendered_pages),
             }}
