@@ -1,0 +1,35 @@
+{
+  "options": {
+    "rank-math-options-sitemap": {
+      "pt_sc_support_article_sitemap": "on",
+      "pt_sc_foundation_doc_sitemap": "on",
+      "pt_astra-advanced-hook_sitemap": "off"
+    },
+    "rank-math-options-titles": {
+      "knowledgegraph_type": "company",
+      "website_name": "Sustainable Catalyst",
+      "pt_sc_support_article_title": "%title% %sep% Sustainable Catalyst Support",
+      "pt_sc_support_article_description": "%excerpt%",
+      "pt_sc_support_article_robots": [],
+      "pt_sc_support_article_custom_robots": "off",
+      "pt_sc_support_article_add_meta_box": "on",
+      "pt_sc_support_article_default_rich_snippet": "article",
+      "pt_sc_support_article_default_article_type": "Article",
+      "pt_sc_support_article_default_snippet_name": "%seo_title%",
+      "pt_sc_support_article_default_snippet_desc": "%seo_description%",
+      "pt_sc_foundation_doc_title": "%title% %sep% Sustainable Catalyst",
+      "pt_sc_foundation_doc_description": "%excerpt%",
+      "pt_sc_foundation_doc_default_rich_snippet": "off"
+    }
+  },
+  "postmeta": [
+    {
+      "match": {
+        "front_page": true
+      },
+      "meta": {
+        "rank_math_title": "%sitename%"
+      }
+    }
+  ]
+}
