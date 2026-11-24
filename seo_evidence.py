@@ -5,9 +5,15 @@ from html.parser import HTMLParser
 import json
 import xml.etree.ElementTree as ET
 
+from seo_structured_data import findings as structured_findings
 from seo_siteone import ImportErrorEvidence, MAX_BYTES, MAX_RECORDS, resolve_target, url_key, utc_timestamp
 
 SCHEMA = "seo.evidence-history.v1"
+# Optional WordPress/Knowledge Base governance states kept from an authorized export. Values are copied verbatim:
+# the Studio reports them and never upgrades an unverified state or implies editorial approval.
+GOVERNANCE_FIELDS = ("post_type", "verification_state", "editorial_state", "lifecycle", "human_review_required",
+                     "kb_verification", "foundation_status", "document_intelligence_public", "robots")
+HTTP_KINDS = ("siteone", "http_crawl")
 SITEMAP_NS = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
 
 
@@ -51,6 +57,7 @@ class EvidenceHistory:
         self.records = {}
         self.artifacts = {}
         self.rejected = Counter()
+        self.extensions = {}  # run-level sections added by importers (e.g. a versioned baseline manifest)
 
     def artifact(self, kind, path, raw):
         digest = hashlib.sha256(raw).hexdigest()
@@ -129,6 +136,8 @@ class EvidenceHistory:
     def publications(self, path):
         raw = source_bytes(path)
         rows = json.loads(raw)
+        if isinstance(rows, dict) and isinstance(rows.get("rows"), list):
+            rows = rows["rows"]  # WordPress status export envelope (exported_at_utc, source, rows)
         if not isinstance(rows, list) or len(rows) > MAX_RECORDS:
             raise ImportErrorEvidence("Expected a bounded array of authorized publication metadata")
         digest = self.artifact("wordpress", path, raw)
@@ -143,6 +152,9 @@ class EvidenceHistory:
             if not isinstance(observed, str):
                 observed = None
             facts = {key: row[key] for key in ("publication_id", "status")}
+            for key in GOVERNANCE_FIELDS:
+                if isinstance(row.get(key), str) and row[key].strip():
+                    facts[key] = row[key].strip()[:120]
             for key in ("publicly_viewable", "password_protected", "exact_permalink"):
                 if type(row.get(key)) is bool:
                     facts[key] = row[key]
@@ -160,6 +172,7 @@ class EvidenceHistory:
         for record in self.records.values():
             grouped[record["comparison_key"]].append(record)
         health = Counter()
+        crawl_health = Counter()
         pages = []
         for key, rows in sorted(grouped.items()):
             in_sitemap = any(row["source_kind"] == "sitemap" for row in rows)
@@ -179,6 +192,34 @@ class EvidenceHistory:
                     noindex = str(facts["robots_index_raw"]).lower() in ("0", "false", "noindex")
                     if status == 200 and facts["page_title"] and facts["page_h1"] == "":
                         checks.append(("P3", "Review missing primary heading"))
+                if row["source_kind"] == "http_crawl" and "http_status" in facts:
+                    crawl_health[str(status) if status is not None else "transport_error"] += 1
+                    if status and status >= 400:
+                        checks.append(("P1", "Investigate failed HTTP response"))
+                    if facts.get("redirect_hops"):
+                        checks.append(("P2", "Review redirect target"))
+                    if status == 200:
+                        targets = facts.get("declared_canonicals") or []
+                        canonical_issue = len(targets) != 1 or url_key(targets[0], self.scope) != key
+                        if canonical_issue:
+                            checks.append(("P2", "Review declared canonical"))
+                        noindex = any("noindex" in d.lower().replace(",", " ").split()
+                                      for d in (facts.get("robots_meta") or []) + [facts.get("x_robots") or ""])
+                        h1 = facts.get("h1_count")
+                        if h1 == 0:
+                            checks.append(("P3", "Review missing primary heading"))
+                        elif h1 and h1 > 1:
+                            checks.append(("P3", "Review multiple H1 headings"))
+                        if not facts.get("page_description"):
+                            checks.append(("P3", "Add a meta description"))
+                        if (facts.get("title_count") or 0) > 1 or (facts.get("description_count") or 0) > 1:
+                            checks.append(("P2", "Remove duplicate title or description tags"))
+                        if facts.get("structured_data"):
+                            checks.extend(structured_findings(facts["structured_data"]))
+                if row["source_kind"] == "audit_finding":
+                    # A prior audit's classification, kept as recorded (not re-derived, not re-prioritised).
+                    findings.append({"priority": facts["audit_priority"], "action": facts["defect"],
+                                     "observation_id": row["observation_id"], "origin": facts["analysis"]})
                 if facts.get("broken_link"):
                     checks.append(("P1", "Repair broken link to " + facts["broken_link"]))
                 if row["source_kind"] == "html_response":
@@ -192,7 +233,7 @@ class EvidenceHistory:
                 if noindex:
                     checks.append(("P2", "Review noindex directive"))
                 if in_sitemap and (noindex or canonical_issue or (
-                        row["source_kind"] == "siteone" and status and 300 <= status < 600)):
+                        row["source_kind"] in HTTP_KINDS and status and 300 <= status < 600)):
                     checks.append(("P1", "Review sitemap entry against technical findings"))
                 findings.extend({"priority": priority, "action": action,
                                  "observation_id": row["observation_id"]}
@@ -201,4 +242,5 @@ class EvidenceHistory:
                           "observations": rows, "findings": sorted(findings, key=lambda finding: finding["priority"])})
         return {"schema_version": SCHEMA, "property_scope": self.scope,
                 "artifacts": list(self.artifacts.values()), "rejected": dict(self.rejected),
-                "crawl_http_counts": dict(health), "pages": pages}
+                "crawl_http_counts": dict(health), "http_crawl_counts": dict(crawl_health),
+                "pages": pages, **self.extensions}
