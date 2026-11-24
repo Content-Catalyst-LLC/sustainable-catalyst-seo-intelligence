@@ -23,9 +23,12 @@
     // Workspace issues a short-lived signed SEO session for the signed-in person (cookie-authenticated, same as Research).
     const r = await fetch(SESSION_URL, {method: "POST", credentials: "include", headers: {"Accept": "application/json"}});
     if (!r.ok) throw new Error(r.status === 401 ? "Sign in to Sustainable Catalyst, then reload." : "Workspace could not issue an SEO Studio session.");
-    const body = await r.json();
-    session = body.authorization; // "SC-Workspace <base64url>"
-    sessionUntil = Date.now() + Math.max(30, (body.expiresIn || 120) - 30) * 1000;
+    const doc = await r.json(); // the signed sc-workspace-seo-session/1.0 document, as Workspace returns it
+    const bytes = new TextEncoder().encode(JSON.stringify(doc));
+    let bin = ""; bytes.forEach((b) => { bin += String.fromCharCode(b); });
+    session = "SC-Workspace " + btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const life = (Date.parse(doc.expiresAt) - Date.parse(doc.issuedAt)) || 120000;
+    sessionUntil = Date.now() + Math.max(30000, life - 60000);
     return session;
   }
 

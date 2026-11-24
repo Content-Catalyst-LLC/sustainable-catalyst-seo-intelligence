@@ -27,14 +27,20 @@ def make_signer():
     return key, key_id, {"keys": [{"keyId": key_id, "publicKey": base64.b64encode(raw).decode(), "state": "current"}]}
 
 
-def issue(key, key_id, subject, method="sc-identity-oidc-session", lifetime=120, now=None):
+def signed_document(key, key_id, subject, method="sc-identity-oidc-session", lifetime=300, now=None):
+    """The document exactly as Workspace's POST /v1/seo-access/session returns it."""
     now = now or datetime.now(timezone.utc)
     body = {"schema": SESSION_SCHEMA, "issuer": ISSUER, "audience": AUDIENCE, "subject": subject,
             "authentication": method, "issuedAt": now.isoformat().replace("+00:00", "Z"),
             "expiresAt": (now + timedelta(seconds=lifetime)).isoformat().replace("+00:00", "Z")}
     sig = key.sign(SESSION_SCHEMA.encode() + b"\n" + canonical(body))
-    doc = {**body, "signature": {"keyId": key_id, "algorithm": "Ed25519",
-                                 "value": base64.urlsafe_b64encode(sig).rstrip(b"=").decode()}}
+    return {**body, "signature": {"alg": "Ed25519", "keyId": key_id,
+                                  "value": base64.urlsafe_b64encode(sig).rstrip(b"=").decode()}}
+
+
+def issue(key, key_id, subject, **kw):
+    """The Authorization header value the Studio page builds from that document."""
+    doc = signed_document(key, key_id, subject, **kw)
     return "SC-Workspace " + base64.urlsafe_b64encode(canonical(doc)).rstrip(b"=").decode()
 
 
@@ -68,7 +74,7 @@ def main():
                 self.send_response(404)
                 self.end_headers()
                 return
-            data = json.dumps({"authorization": issue(key, key_id, args.subject), "expiresIn": 120}).encode()
+            data = json.dumps(signed_document(key, key_id, args.subject)).encode()
             self.send_response(200)
             self.cors()
             self.send_header("Content-Type", "application/json")
