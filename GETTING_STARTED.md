@@ -7,7 +7,7 @@ An evidence-first SEO application for Sustainable Catalyst's research, publishin
 ## Implemented in v0.1.0
 
 - Imports native Search Console Excel (.xlsx) exports for coverage, indexed pages, crawled-but-unindexed pages, and 403 errors.
-- Imports an optional ordinary HTTP audit TSV from SC-SEO-01.
+- Imports an optional ordinary HTTP audit TSV from the legacy SC-SEO-01-403 HTTP check (2026-11-20; files keep their original `SC-SEO-01-live-check.tsv` name).
 - Keeps historical Search Console status separate from current ordinary HTTP responses.
 - Classifies articles, category archives, feeds, API endpoints, Knowledge Base, Research Hub, and application routes.
 - Generates a **local HTML dashboard**, URL inventory CSV, issue queue CSV, and summary JSON.

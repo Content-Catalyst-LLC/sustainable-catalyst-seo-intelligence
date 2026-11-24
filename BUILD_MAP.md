@@ -64,3 +64,7 @@ GSC exports / optional official API  +  SiteOne JSON  +  WordPress read-only
 - Require version pinning, provenance hashes, synthetic/negative tests, approval, rollback and environment-specific acceptance before release.
 
 Private cross-repository architecture and handoff are maintained in Content-Catalyst-LLC/documentation and Content-Catalyst-LLC/handoffs.
+
+## SC-SEO-02.1C/D implementation
+
+The [CrawlSEO decision](docs/CRAWLSEO-DECISION.md) recommends a first-party read-only Search Console API connector for 02.2. The 02.1 Studio continues to consume local exports. The [unified evidence contract](docs/EVIDENCE-HISTORY.md) and [SiteOne acceptance](docs/SITEONE-ACCEPTANCE.md) describe the existing dashboard integration and replay. Owner-approved public crawl scope, real private export replay and authenticated connector acceptance remain open.

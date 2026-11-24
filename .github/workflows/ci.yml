@@ -2,10 +2,16 @@ name: SC-SEO-02 synthetic tests
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'integration/**', 'feature/**', 'codex/**']
     paths:
-      - 'seo_studio.py'
+      - 'seo_*.py'
+      - 'contracts/**'
+      - 'fixtures/**'
+      - 'scripts/**'
+      - 'docs/**'
+      - 'README.md'
       - 'tests/**'
+      - 'remediation/**'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
 
@@ -22,7 +28,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Syntax
-        run: python3 -m py_compile seo_studio.py
+        run: python3 -m py_compile seo_*.py scripts/*.py
       - name: Synthetic unit tests
         run: python3 -m unittest discover -s tests -v
       - name: Check no real exports or local reports are tracked
@@ -33,3 +39,24 @@ jobs:
             exit 1
           fi
           echo 'No private export paths tracked'
+  remediation-php:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: none
+      - name: PHP syntax (WordPress remediation tools)
+        shell: bash
+        run: |
+          set -euo pipefail
+          find remediation -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Remediation tools contain no host or account identifiers
+        shell: bash
+        run: |
+          if grep -rnE '(/home[0-9]*/|public_html|ssh |@[a-z0-9-]+\.(com|net) )' remediation; then
+            echo 'Host-specific detail found in public remediation tools' >&2
+            exit 1
+          fi

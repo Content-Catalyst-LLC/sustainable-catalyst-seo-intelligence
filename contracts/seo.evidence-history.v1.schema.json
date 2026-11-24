@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SEO Intelligence evidence history",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "property_scope", "artifacts", "rejected", "crawl_http_counts", "pages"],
+  "properties": {
+    "schema_version": {"const": "seo.evidence-history.v1"},
+    "property_scope": {"type": "string", "format": "uri"},
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source_kind", "source_file", "source_sha256", "imported_at_utc"],
+        "properties": {
+          "source_kind": {"$ref": "#/$defs/kind"},
+          "source_file": {"type": "string"},
+          "source_sha256": {"$ref": "#/$defs/hash"},
+          "imported_at_utc": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    "rejected": {"$ref": "#/$defs/counts"},
+    "crawl_http_counts": {"$ref": "#/$defs/counts"},
+    "pages": {"type": "array", "items": {"$ref": "#/$defs/page"}}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "kind": {"enum": ["gsc_export", "historical_http", "siteone", "sitemap", "wordpress", "html_response"]},
+    "counts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observation_id", "source_kind", "source_sha256", "source_record", "original_url", "comparison_key", "source_time_raw", "facts"],
+      "properties": {
+        "observation_id": {"$ref": "#/$defs/hash"},
+        "source_kind": {"$ref": "#/$defs/kind"},
+        "source_sha256": {"$ref": "#/$defs/hash"},
+        "source_record": {"type": ["integer", "null"], "minimum": 0},
+        "original_url": {"type": "string", "format": "uri"},
+        "comparison_key": {"type": "string", "format": "uri"},
+        "source_time_raw": {"type": ["string", "null"]},
+        "facts": {"type": "object"}
+      }
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "sitemap_member", "observations", "findings"],
+      "properties": {
+        "url": {"type": "string", "format": "uri"},
+        "sitemap_member": {"enum": [true, null]},
+        "observations": {"type": "array", "items": {"$ref": "#/$defs/observation"}},
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["observation_id", "priority", "action"],
+            "properties": {
+              "observation_id": {"$ref": "#/$defs/hash"},
+              "priority": {"enum": ["P1", "P2", "P3"]},
+              "action": {"type": "string"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

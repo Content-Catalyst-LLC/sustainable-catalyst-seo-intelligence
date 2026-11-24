@@ -5,7 +5,7 @@
 
 ## Data flow
 
-Local Search Console XLSX exports + optional SC-SEO-01 ordinary HTTP TSV
+Local Search Console XLSX exports + optional SC-SEO-01-403 ordinary HTTP TSV (legacy 403 check)
 → seo_studio.py (read-only parsing, URL normalization, classification and evidence reconciliation)
 → local HTML, CSV, JSON reports (not for public serving).
 
