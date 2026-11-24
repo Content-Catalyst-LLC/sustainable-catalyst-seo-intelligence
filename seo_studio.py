@@ -7,6 +7,7 @@ against Google, WordPress, GitHub, or a live production site.
 from __future__ import annotations
 
 import argparse
+import io
 from collections import Counter, defaultdict
 import csv
 from datetime import datetime, timedelta, timezone
@@ -19,13 +20,16 @@ from urllib.parse import unquote, urlsplit
 import xml.etree.ElementTree as ET
 import zipfile
 
+from seo_evidence import EvidenceHistory, source_bytes
+from seo_siteone import csv_safe, parse_report, property_origin, url_key
+
 VERSION = "0.1.0"
 DOMAIN = "sustainablecatalyst.com"
 X = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
 
-def excel_rows(path: Path) -> dict[str, list[dict]]:
+def excel_rows(path: Path | io.BytesIO) -> dict[str, list[dict]]:
     """Read Google XLSX exports without loading formulas or executing macros."""
     ns = {"x": X}
     with zipfile.ZipFile(path) as z:
@@ -193,19 +197,27 @@ def slug_pairs(records: list[dict]) -> list[dict]:
     return sorted(result, key=lambda r: -r["slug_similarity"])[:30]
 
 
-def read_sources(folder: Path, http_tsv: Path | None) -> dict:
+def read_sources(folder: Path, http_tsv: Path | None, evidence=None) -> dict:
     sources = {}
     warnings = []
     for file in sorted(folder.glob("*.xlsx")):
         if file.name.startswith("SC-SEO-"):
             continue
         try:
-            sheets = excel_rows(file)
+            raw = source_bytes(file) if evidence else None
+            sheets = excel_rows(io.BytesIO(raw) if raw is not None else file)
             kind = source_type(sheets)
             if kind:
                 if kind in sources:
                     warnings.append("Multiple " + kind + " workbooks; using last by filename")
                 sources[kind] = (file.name, sheets)
+                if evidence:
+                    digest = evidence.artifact("gsc_export", file, raw)
+                    for ordinal, item in enumerate(sheets.get("Table", [])):
+                        last_crawl = item.get("Last crawled")
+                        evidence.add("gsc_export", digest, ordinal, item.get("URL"),
+                                     {"export_classification": kind},
+                                     str(last_crawl) if last_crawl not in ("", None) else None)
         except (ValueError, KeyError, zipfile.BadZipFile, ET.ParseError) as exc:
             warnings.append("Skipped " + file.name + ": " + str(exc))
     if http_tsv is None:
@@ -215,6 +227,8 @@ def read_sources(folder: Path, http_tsv: Path | None) -> dict:
                 http_tsv = candidate
                 break
     by_url = {}
+    inventory_url = (lambda value: url_key(value, evidence.scope) or "") if evidence else normalize
+
     def add(url, status, crawl):
         row = by_url.get(url)
         if row is None:
@@ -230,21 +244,35 @@ def read_sources(folder: Path, http_tsv: Path | None) -> dict:
         if kind not in sources:
             continue
         for item in sources[kind][1].get("Table", []):
-            url = normalize(item.get("URL"))
+            url = inventory_url(item.get("URL"))
             if url:
                 add(url, label, date_value(item.get("Last crawled")))
     http_records = []
     if http_tsv and http_tsv.is_file():
-        with http_tsv.open("r", encoding="utf-8-sig", newline="") as file:
-            for item in csv.DictReader(file, delimiter="\t"):
-                url = normalize(item.get("url"))
+        raw = source_bytes(http_tsv) if evidence else None
+        digest = evidence.artifact("historical_http", http_tsv, raw) if evidence else None
+        stream = (io.StringIO(raw.decode("utf-8-sig"), newline="") if raw is not None
+                  else http_tsv.open("r", encoding="utf-8-sig", newline=""))
+        with stream:
+            for ordinal, item in enumerate(csv.DictReader(stream, delimiter="\t")):
+                if evidence:
+                    code = str(item.get("http_status") or "").strip()
+                    if re.fullmatch(r"[1-5][0-9]{2}", code):
+                        final = item.get("final_url")
+                        evidence.add("historical_http", digest, ordinal, item.get("url"),
+                                     {"http_status": int(code),
+                                      "final_url": final if url_key(final, evidence.scope) else None},
+                                     item.get("observed_at") or None)
+                    else:
+                        evidence.rejected["historical_http"] += 1
+                url = inventory_url(item.get("url"))
                 if not url:
                     continue
                 add(url, "HTTP audit only", "")
                 code = str(item.get("http_status") or "").strip()
                 row = by_url[url]
                 row.update(http_status=code,
-                           final_url=normalize(item.get("final_url")),
+                           final_url=inventory_url(item.get("final_url")),
                            redirect_count=str(item.get("redirect_count") or ""))
                 http_records.append(row.copy())
     for row in by_url.values():
@@ -283,6 +311,13 @@ def read_sources(folder: Path, http_tsv: Path | None) -> dict:
                     histories[date][col] = int(item.get("Affected pages"))
                 except (ValueError, TypeError):
                     pass
+    for item in coverage.get("Chart", []):
+        date = date_value(item.get("Date"))
+        if date and "indexed" not in histories[date]:
+            try:
+                histories[date]["indexed"] = int(item["Indexed"])
+            except (KeyError, ValueError, TypeError):
+                pass
     counts = Counter(row["http_status"] for row in http_records)
     source_names = {kind: filename for kind, (filename, _) in sources.items()}
     if http_tsv and http_tsv.is_file():
@@ -302,7 +337,7 @@ def read_sources(folder: Path, http_tsv: Path | None) -> dict:
         },
         "http_audit": {"count": len(http_records), "status_counts": dict(counts),
                        "does_not_prove_googlebot_behavior": True},
-        "history": [{"date": d, **histories[d]} for d in sorted(histories)],
+        "history": [{"date": d, **histories[d]} for d in sorted(histories) if histories[d]],
         "inventory": records, "near_slug_pairs": slug_pairs(records)
     }
 
@@ -336,6 +371,13 @@ and ordinary HTTP responses are different evidence classes; a 200 response does 
 <select id="priority" aria-label="Filter priority"><option value="">All priorities</option><option>P1</option><option>P2</option><option>P3</option><option>Review</option><option>Monitor</option></select>
 </div><div id="count" class="subtitle"></div><table><thead><tr><th>Priority</th><th>URL</th><th>Index state</th><th>Type</th><th>HTTP</th><th>Action</th></tr></thead><tbody id="rows"></tbody></table>
 <button id="previous">Previous</button> <button id="next">Next</button></section>
+<h2>Indexing trend from Search Console exports</h2><div class="panel" id="history"></div>
+<h2>Technical crawl and publication evidence</h2><section class="panel">
+<p id="health"></p><div id="validation"></div>
+<label>Find URL or publication <input id="evidence-query" type="search"></label>
+<label><input id="findings-only" type="checkbox"> Findings only</label>
+<div id="investigations"></div><button id="more-evidence" type="button">Show more</button>
+</section>
 <h2>Evidence and limitations</h2><div class="panel" id="sources"></div>
 <footer>No automatic redirects, publishing changes, validation requests, or content quality scores.</footer>
 </main><script id="evidence" type="application/json">__DATA__</script>
@@ -347,6 +389,45 @@ metric("Indexed (reported)",d.coverage.indexed_reported);
 metric("Crawled, not indexed (reported)",d.coverage.crawled_not_indexed_reported);
 metric("Unindexed examples imported",d.coverage.unindexed_examples);
 metric("Current HTTP 403 in supplied audit",d.http_audit.status_counts["403"]||0);
+const history=document.getElementById("history");
+if(d.history.length){
+const table=el("table"), header=el("tr");
+for(const label of ["Date","Indexed","Crawled, currently not indexed"]){const th=el("th",label);th.scope="col";header.append(th);}
+const head=el("thead"), body=el("tbody");head.append(header);table.append(head,body);
+for(const item of d.history){const tr=el("tr");for(const key of ["date","indexed","crawled_not_indexed"])tr.append(el("td",item[key]??"—"));body.append(tr);}
+history.append(table);
+}else history.textContent="No dated Search Console coverage observations supplied.";
+const evidence=d.evidence_history;
+const health=document.getElementById("health"), validation=document.getElementById("validation");
+const investigations=document.getElementById("investigations"), more=document.getElementById("more-evidence");
+if(evidence){
+health.textContent=Object.entries(evidence.crawl_http_counts).map(([code,n])=>code+" · "+n).join(" | ")||"No SiteOne HTTP observations supplied.";
+validation.textContent="Imported artifacts · "+evidence.artifacts.length+" | Rejected source rows · "+Object.values(evidence.rejected).reduce((a,b)=>a+b,0);
+validation.append(el("p","SiteOne HTTP results and Search Console indexing observations are reported separately."));
+const provenance=el("details");provenance.append(el("summary","Artifact and import history"));
+for(const a of evidence.artifacts)provenance.append(el("p",[a.source_kind,a.source_file,a.imported_at_utc,a.source_sha256].join(" · ")));
+validation.append(provenance);
+const search=document.getElementById("evidence-query"), only=document.getElementById("findings-only");
+const pages=evidence.pages.slice().sort((a,b)=>(a.findings[0]?.priority??"Z").localeCompare(b.findings[0]?.priority??"Z"));
+function appendPages(offset){
+const query=search.value.toLowerCase();
+const matches=pages.filter(p=>(!only.checked||p.findings.length)&&(p.url.toLowerCase().includes(query)||p.observations.some(o=>String(o.facts.publication_id??"").toLowerCase().includes(query))));
+if(!offset)investigations.replaceChildren(el("p",matches.length+" matching URLs"));
+for(const page of matches.slice(offset,offset+30)){
+const details=el("details");details.append(el("summary",page.url+" · "+page.findings.length+" finding(s)"));
+details.append(el("p",page.sitemap_member?"Listed in a supplied XML sitemap":"Sitemap membership unknown"));
+for(const f of page.findings.slice().sort((a,b)=>a.priority.localeCompare(b.priority)))details.append(el("p",f.priority+" · "+f.action+" · "+f.observation_id));
+for(const o of page.observations){
+const facts=Object.entries(o.facts).filter(([,v])=>v!==null).map(([k,v])=>k+" = "+v);
+details.append(el("p",[o.source_kind,o.source_time_raw??"source time unknown",...facts,"SHA-256 "+o.source_sha256,"Observation "+o.observation_id].join(" · ")));
+}
+investigations.append(details);
+}
+more.hidden=offset+30>=matches.length;
+more.onclick=()=>appendPages(offset+30);
+}
+search.oninput=only.onchange=()=>appendPages(0);appendPages(0);
+}else{health.textContent="No unified evidence supplied.";more.hidden=true;}
 const counts={};d.inventory.forEach(x=>{if(x.priority!=="Monitor"){const k=x.priority+" · "+x.action;counts[k]=(counts[k]||0)+1;}});
 const q=document.getElementById("queue");Object.entries(counts).sort().forEach(([k,n])=>{q.append(el("p",n+" URL(s): "+k));});
 const unique=k=>[...new Set(d.inventory.map(r=>r[k]))].sort();
@@ -380,7 +461,7 @@ def write_csv(path: Path, records: list[dict], fields: list[str]) -> None:
     with path.open("w", encoding="utf-8-sig", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(records)
+        writer.writerows({key: csv_safe(row.get(key)) for key in fields} for row in records)
 
 
 def save_report(report: dict, output: Path) -> None:
@@ -409,13 +490,36 @@ def main(argv=None) -> int:
     cli.add_argument("--input-dir", required=True, type=Path, help="Directory containing original Google .xlsx exports")
     cli.add_argument("--output-dir", required=True, type=Path, help="Local private output directory")
     cli.add_argument("--http-tsv", type=Path, default=None, help="Optional SC-SEO-01 HTTP audit TSV")
+    cli.add_argument("--siteone-json", type=Path, action="append", default=[])
+    cli.add_argument("--sitemap-xml", type=Path, action="append", default=[])
+    cli.add_argument("--html-response", nargs=2, metavar=("URL", "FILE"), action="append", default=[],
+                     help="Trusted local capture of a URL's HTML response body")
+    cli.add_argument("--publications-json", type=Path, help="Explicitly authorized local publication metadata")
+    cli.add_argument("--property", default="https://" + DOMAIN + "/")
+    cli.add_argument("--imported-at", help="Explicit UTC import time for reproducible reports")
     args = cli.parse_args(argv)
     folder = args.input_dir.expanduser().resolve()
     if not folder.is_dir():
         cli.error("Input directory does not exist")
-    report = read_sources(folder, args.http_tsv)
-    if not report["sources"]:
+    try:
+        scope = property_origin(args.property)
+        evidence = EvidenceHistory(scope, args.imported_at)
+        report = read_sources(folder, args.http_tsv, evidence)
+        for path in args.siteone_json:
+            evidence.siteone(parse_report(path, args.property, evidence.imported_at))
+        for path in args.sitemap_xml:
+            evidence.sitemap(path)
+        for url, path in args.html_response:
+            evidence.html_response(url, Path(path))
+        if args.publications_json:
+            evidence.publications(args.publications_json)
+    except (ValueError, OSError, ET.ParseError, csv.Error) as exc:
+        cli.error(str(exc))
+    if not report["sources"] and not evidence.artifacts:
         cli.error("No supported source exports found")
+    report["generated_at"] = evidence.imported_at
+    report["property"] = scope
+    report["evidence_history"] = evidence.build()
     save_report(report, args.output_dir.expanduser().resolve())
     print("SC-SEO-02 v" + VERSION + " — offline report generated")
     print("Sources:", ", ".join(report["sources"].keys()))
