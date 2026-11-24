@@ -1,0 +1,1 @@
+{"observed_at_utc": "2026-11-24T00:00:00Z", "method": "synthetic", "observations": {}, "conclusion": "No batch applied (synthetic).", "batches": [{"batch": "B3", "changes": ["A13"], "scope": "1 redirect", "state": "validated-not-deployed", "negative_control": null, "rollback": "synthetic"}]}

@@ -1,0 +1,6 @@
+priority,category,section,url,defect,evidence,proposed_fix
+P0,sitemap,Article / page,https://sustainablecatalyst.com/noindex/,noindex page listed in sitemap,synthetic,synthetic
+P1,internal-links,Article / page,https://sustainablecatalyst.com/gone/,Broken internal link target (HTTP 404),synthetic,synthetic
+P1,internal-links,Article / page,https://sustainablecatalyst.com/old-slug/,Broken internal link target (HTTP 404),synthetic,synthetic
+P2,metadata,Article / page,https://sustainablecatalyst.com/b/,Missing meta description,synthetic,synthetic
+P1,headings,Article / page,https://sustainablecatalyst.com/bad link/x,Fetch error,synthetic,synthetic
