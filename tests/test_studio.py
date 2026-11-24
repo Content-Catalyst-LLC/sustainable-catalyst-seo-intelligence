@@ -63,6 +63,20 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(self.count("SELECT COUNT(*) FROM finding"), fin)
         self.assertEqual(self.count("SELECT COUNT(*) FROM finding WHERE evidence_class='prior'"), 4)
 
+    def test_cli_stores_recommendations_on_request(self):
+        out = Path(self.tmp.name) / "cli.sqlite"
+        hist = Path(self.tmp.name) / "h.json"
+        hist.write_text(json.dumps(self.history))
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(seo_store.main(["--db", str(out), "--history", str(hist), "--label", "b", "--kind",
+                                             "baseline", "--with-recommendations"]), 0)
+            self.assertEqual(seo_store.main(["--db", str(out), "--history", str(hist), "--label", "b", "--kind",
+                                             "baseline"]), 2)  # same history twice: refused
+        db = seo_store.connect(out, readonly=True)
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM recommendation").fetchone()[0],
+                         len(seo_recommendations.derive(self.history)))
+        db.close()
+
     def test_append_only(self):
         for sql in ("UPDATE finding SET priority='P0'", "DELETE FROM observation", "DELETE FROM run"):
             with self.assertRaises(sqlite3.DatabaseError):
