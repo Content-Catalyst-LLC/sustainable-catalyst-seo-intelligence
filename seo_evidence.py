@@ -142,8 +142,11 @@ class EvidenceHistory:
             observed = row.get("modified_at")
             if not isinstance(observed, str):
                 observed = None
-            self.add("wordpress", digest, index, row["url"],
-                     {key: row[key] for key in ("publication_id", "status")}, observed)
+            facts = {key: row[key] for key in ("publication_id", "status")}
+            for key in ("publicly_viewable", "password_protected", "exact_permalink"):
+                if type(row.get(key)) is bool:
+                    facts[key] = row[key]
+            self.add("wordpress", digest, index, row["url"], facts, observed)
 
     def build(self):
         grouped = defaultdict(list)
