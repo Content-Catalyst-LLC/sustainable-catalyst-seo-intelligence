@@ -16,7 +16,7 @@ SC-SEO-01-*
 SC-SEO-02-*
 # Private SC-SEO-01 deliverables are ignored above; the public WordPress tools are not
 # (core.ignorecase makes the rule above match them on macOS).
-!wordpress/sc-seo-01/sc-seo-01-*.php
+!remediation/wordpress/sc-seo-01/sc-seo-01-*.php
 output/
 reports/
 private/

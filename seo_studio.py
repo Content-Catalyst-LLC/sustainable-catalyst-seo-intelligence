@@ -513,7 +513,7 @@ def main(argv=None) -> int:
     cli = argparse.ArgumentParser(description="Read-only SC-SEO-02 export analysis")
     cli.add_argument("--input-dir", required=True, type=Path, help="Directory containing original Google .xlsx exports")
     cli.add_argument("--output-dir", required=True, type=Path, help="Local private output directory")
-    cli.add_argument("--http-tsv", type=Path, default=None, help="Optional SC-SEO-01 HTTP audit TSV")
+    cli.add_argument("--http-tsv", type=Path, default=None, help="Optional legacy SC-SEO-01-403 HTTP audit TSV")
     cli.add_argument("--siteone-json", type=Path, action="append", default=[])
     cli.add_argument("--sitemap-xml", type=Path, action="append", default=[])
     cli.add_argument("--html-response", nargs=2, metavar=("URL", "FILE"), action="append", default=[],
