@@ -12,6 +12,7 @@ on:
       - 'README.md'
       - 'tests/**'
       - 'remediation/**'
+      - 'studio/**'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
 
@@ -39,6 +40,23 @@ jobs:
             exit 1
           fi
           echo 'No private export paths tracked'
+  studio-identity:
+    # Re-runs the suite with the optional `cryptography` dependency so the Workspace-session tests are not skipped.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install optional Studio server dependency (pinned)
+        run: python3 -m pip install 'cryptography==44.0.1'
+      - name: Tests including authenticated Studio and session refusals
+        run: python3 -m unittest discover -s tests -v
+      - name: Studio static assets load nothing external
+        shell: bash
+        run: |
+          if grep -nE '(src|href)="https?://' studio/*.html; then echo 'External asset in Studio shell' >&2; exit 1; fi
   remediation-php:
     runs-on: ubuntu-latest
     timeout-minutes: 5

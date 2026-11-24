@@ -1,0 +1,1 @@
+{"baseline_id": "synthetic-baseline", "work_identifier": "synthetic", "collection_policy": {"collector": "synthetic", "workers": 1}, "observed_window": {"start": null, "end": "2026-11-23T22:59Z", "precision": "run", "per_request_timestamps": false}, "validation": {"crawl": "synthetic"}}
