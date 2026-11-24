@@ -214,6 +214,7 @@ def analyze_publications(sources, rendered_sources, evidence):
             for r in wp
         )
 
+    capture_hashes = {a["url"]: a["sha256"] for a in artifacts if a["kind"] == "initial_html"}
     suggestions = []
     for map_row in maps:
         map_url = map_row["url"]
@@ -222,10 +223,23 @@ def analyze_publications(sources, rendered_sources, evidence):
         for article in sorted(set(map_row["article_urls"])):
             if article == map_url or not verified_link_endpoint(article):
                 continue
+            article_evidence = [o["facts"] for o in by_url[article]["observations"]
+                                if o["source_kind"] == "wordpress"]
+            if any("approved_map_urls" in proof and map_url not in proof["approved_map_urls"]
+                   for proof in article_evidence):
+                continue
             for source, destination in ((map_url, article), (article, map_url)):
                 if destination not in raw_pages[source].main_links:
                     suggestions.append({"from": source, "to": destination,
-                                        "map_id": map_row["id"], "requires_editorial_review": True})
+                                        "map_id": map_row["id"], "requires_editorial_review": True,
+                                        "source_html_sha256": capture_hashes[source],
+                                        "destination_html_sha256": capture_hashes[destination],
+                                        "wordpress_observation_ids": [
+                                            o["observation_id"] for endpoint in (source, destination)
+                                            for o in by_url[endpoint]["observations"]
+                                            if o["source_kind"] == "wordpress"],
+                                        "destination_sitemap_membership": (
+                                            "listed" if by_url[destination].get("sitemap_member") else "unknown")})
 
     variants = []
     for url in graph[hub]:
