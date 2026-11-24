@@ -21,11 +21,13 @@ Rank Math's sitemap can only *exclude* post types through filters. Including a p
 ```bash
 # 0. backup (DB dump with utf8mb4, per the host runbook) and record current rendered HTML
 wp eval-file sc-seo-01-changeset.php plan  changes.options.json            # review
-wp eval-file sc-seo-01-changeset.php apply changes.options.json  ~/sc-releases/backups/<ts>-sc-seo-01-options.json
+wp eval-file sc-seo-01-changeset.php lock  changes.options.json > lock.options.json   # at review time
+wp eval-file sc-seo-01-changeset.php apply changes.options.json  ~/sc-releases/backups/<ts>-sc-seo-01-options.json lock.options.json
 wp eval-file sc-seo-01-changeset.php apply changes.page-meta.json ~/sc-releases/backups/<ts>-sc-seo-01-page-meta.json
 cp sc-seo-01.php wp-content/mu-plugins/                                     # schema typing + KB sitemap gate (before enabling KB sitemaps)
 wp eval-file sc-seo-01-kb-h1.php plan                                       # review
-wp eval-file sc-seo-01-kb-h1.php apply ~/sc-releases/backups/<ts>-sc-seo-01-kb-h1.json
+wp eval-file sc-seo-01-kb-h1.php lock > lock.kb-h1.json                       # at review time
+wp eval-file sc-seo-01-kb-h1.php apply ~/sc-releases/backups/<ts>-sc-seo-01-kb-h1.json lock.kb-h1.json
 wp eval-file sc-seo-01-dedupe-repeated-page.php plan  <id>:<audited-md5> ...  # only after owner confirms the page text
 wp eval-file sc-seo-01-dedupe-repeated-page.php apply ~/sc-releases/backups/<ts>-sc-seo-01-dedupe.json <id>:<audited-md5> ...
 # verify anonymously (sitemap index, KB sitemap, JSON-LD types, titles), then purge the page cache
@@ -37,6 +39,8 @@ rm wp-content/mu-plugins/sc-seo-01.php
 wp eval-file sc-seo-01-kb-h1.php rollback ~/sc-releases/backups/<ts>-sc-seo-01-kb-h1.json
 wp eval-file sc-seo-01-dedupe-repeated-page.php rollback ~/sc-releases/backups/<ts>-sc-seo-01-dedupe.json
 ```
+
+**Locks.** `apply` requires the lock captured when the change was reviewed and refuses if any targeted value or post has changed since, so a reviewed changeset can never overwrite a newer edit. Changeset rollback likewise refuses keys edited after apply unless `--force` is given. The tools never flush rewrite rules (a WP-CLI flush drops Rank Math's sitemap rules); they invalidate the Rank Math sitemap cache, the object cache and the page cache.
 
 The content tools call `kses_remove_filters()` for their own writes: WP-CLI runs without a user, and the content they save is derived from content an administrator already stored, so it must not be re-filtered.
 

@@ -4,7 +4,8 @@
  * The single-article template already renders the title as the page H1.
  *
  *   wp eval-file sc-seo-01-kb-h1.php plan
- *   wp eval-file sc-seo-01-kb-h1.php apply    <backup-out.json>
+ *   wp eval-file sc-seo-01-kb-h1.php lock                              (prints {id: md5(current content)} of posts that would change)
+ *   wp eval-file sc-seo-01-kb-h1.php apply    <backup-out.json> <lock.json>
  *   wp eval-file sc-seo-01-kb-h1.php rollback <backup.json>
  *
  * Scope: published sc_support_article posts only. Only an <h1>…</h1> whose plain text equals
@@ -60,13 +61,23 @@ foreach ($posts as $p) {
         }
     }
     $plan[] = array('id' => $p->ID, 'url' => get_permalink($p), 'removed' => $removed, 'kept_other_h1' => $kept, 'old' => $c, 'new' => $new);
-    WP_CLI::log(sprintf('%s %d %s  removed=%d other_h1_kept=%s', $removed ? 'CHANGE' : 'skip  ', $p->ID, get_permalink($p), $removed, json_encode($kept, JSON_UNESCAPED_UNICODE)));
+    if ($mode !== 'lock') WP_CLI::log(sprintf('%s %d %s  removed=%d other_h1_kept=%s', $removed ? 'CHANGE' : 'skip  ', $p->ID, get_permalink($p), $removed, json_encode($kept, JSON_UNESCAPED_UNICODE)));
 }
 $changes = array_values(array_filter($plan, function ($r) { return $r['removed'] > 0; }));
+$lock = array();
+foreach ($changes as $r) { $lock[(string) $r['id']] = md5($r['old']); }
+ksort($lock);
+if ($mode === 'lock') { echo json_encode($lock, JSON_PRETTY_PRINT) . "\n"; return; }
 if ($mode !== 'apply') { WP_CLI::success(count($changes) . ' posts would change (no writes)'); return; }
 
 $out = $args[1] ?? '';
 if (!$out || file_exists($out)) { WP_CLI::error('backup path required and must not exist'); }
+$want = isset($args[2]) ? json_decode((string) @file_get_contents($args[2]), true) : null;
+if (!is_array($want)) { WP_CLI::error('apply requires the lock file produced at review time'); }
+ksort($want);
+if ($want !== $lock) {
+    WP_CLI::error('posts or content differ from the reviewed lock, refusing: ' . implode(', ', array_keys(array_diff_assoc($lock, $want) + array_diff_assoc($want, $lock))));
+}
 $backup = array('created_gmt' => gmdate('c'), 'site' => home_url('/'), 'posts' => array());
 foreach ($changes as $r) {
     $backup['posts'][] = array('id' => $r['id'], 'url' => $r['url'], 'old_content' => $r['old'], 'new_md5' => md5($r['new']));
