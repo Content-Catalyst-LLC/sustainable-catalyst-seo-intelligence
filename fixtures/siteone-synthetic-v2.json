@@ -1,0 +1,15 @@
+{
+  "crawler": {"name":"SiteOne Crawler","version":"2.5.1","executedAt":"2026-11-20 12:30:00","finalUserAgent":"Synthetic SiteOne example (not observed)","command":"synthetic fixture only"},
+  "results": [
+    {"url":"https://example.test/guide/?source=test","status":"200","type":1,"elapsedTime":0.2,"extras":[]},
+    {"url":"https://example.test/old/","status":"301","type":9,"extras":[]},
+    {"url":"https://example.test/missing/","status":"404","type":1,"extras":[]},
+    {"url":"https://example.test/private/","status":"403","type":1,"extras":[]},
+    {"url":"https://outside.invalid/","status":"200","type":1,"extras":[]}
+  ],
+  "tables": {
+    "redirects":{"rows":[{"url":"https://example.test/old/","statusCode":"301","targetUrl":"https://example.test/guide/?source=test"}]},
+    "seo":{"rows":[{"urlPathAndQuery":"/guide/?source=test","title":"Synthetic guide","description":"Synthetic only","h1":"Guide","robotsIndex":"1","indexing":"","deniedByRobotsTxt":"false"}, {"urlPathAndQuery":"/private/","robotsIndex":"0","indexing":"noindex","deniedByRobotsTxt":"false"}]},
+    "404":{"rows":[{"sourceUqId":"https://example.test/guide/?source=test","statusCode":"404","url":"https://example.test/missing/"}]}
+  }
+}
