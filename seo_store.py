@@ -214,6 +214,8 @@ def main(argv=None):
     cli.add_argument("--receipt", type=Path)
     cli.add_argument("--label", required=True)
     cli.add_argument("--kind", required=True, choices=("baseline", "studio", "collector", "connector", "verification"))
+    cli.add_argument("--with-recommendations", action="store_true",
+                     help="Also store inferred recommendations (seo_recommendations) for this run")
     args = cli.parse_args(argv)
     data = json.loads(args.history.read_bytes())
     history = data.get("evidence_history", data)
@@ -226,6 +228,9 @@ def main(argv=None):
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    if args.with_recommendations:
+        from seo_recommendations import derive
+        add_recommendations(db, run_id, derive(history))
     counts = {t: db.execute(f"SELECT COUNT(*) FROM {t} WHERE run_id = ?", (run_id,)).fetchone()[0] for t in TABLES[1:]}
     print(run_id, json.dumps(counts))
     return 0

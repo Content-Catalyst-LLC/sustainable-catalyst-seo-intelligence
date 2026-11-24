@@ -13,6 +13,7 @@ on:
       - 'tests/**'
       - 'remediation/**'
       - 'studio/**'
+      - 'deploy/**'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
 
@@ -53,6 +54,20 @@ jobs:
         run: python3 -m pip install 'cryptography==44.0.1'
       - name: Tests including authenticated Studio and session refusals
         run: python3 -m unittest discover -s tests -v
+      - name: Staging kit builds (no evidence in the image) and scripts parse
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n deploy/staging/import-baseline.sh deploy/staging/rehearse.sh
+          docker build -q -t sc-seo-intelligence:ci -f deploy/staging/Dockerfile .
+          docker run --rm --entrypoint sh sc-seo-intelligence:ci -c 'id -u; ls /app; test ! -e /app/tests && test ! -e /app/evidence'
+          docker compose -f deploy/staging/compose.yml config -q
+        env:
+          SEO_IMAGE_TAG: ci
+          SEO_STAGING_ALLOW: workspace-user:ci
+          SEO_STAGING_SESSION_URL: https://workspace.example.invalid/v1/seo-access/session
+          SEO_STAGING_KEYRING: /dev/null
+          SEO_STAGING_EVIDENCE: /tmp
       - name: Studio static assets load nothing external
         shell: bash
         run: |

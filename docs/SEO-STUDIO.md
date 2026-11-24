@@ -26,52 +26,42 @@ SEO Studio reuses the Workspace identity used by Research:
 
 Workspace issues sessions from `POST /v1/seo-access/session`, which is a separate Workspace PR.
 
-## Infrastructure safeguards before staging or production storage
-None of these exist yet. Each needs owner authorization.
+## Staging deployment (`deploy/staging/`)
+The store is SQLite (the only backend the code implements). The PostgreSQL DDL in `contracts/sql/` is the
+schema contract for a later move if volume demands it. Staging needs no new database server: the full
+baseline is **27 MB**.
 
-1. **Isolation**
-   - A dedicated database `seo_intelligence` on the shared PostgreSQL server, or a separate small instance.
-   - Roles `seo_owner`, `seo_writer` (INSERT/SELECT) and `seo_reader` (SELECT).
-   - `REVOKE ALL FROM PUBLIC`; reachable only on the internal Docker network.
-2. **Secrets**
-   - Database passwords, the Workspace public keyring and any GSC key live in server-side files with mode 0600 or in Docker secrets.
-   - None of them are in Git, in the image or in logs.
-3. **Backups**
-   - A nightly `pg_dump -Fc` of the SEO database, encrypted.
-   - Off-host copy (the existing off-site target used for Workspace backups), with 30 daily and 12 monthly copies retained.
-4. **Verified restore**
-   - Before go-live, restore the latest dump into a scratch database and compare row counts and `history_sha256` for every run. Record the receipt.
-   - Repeat monthly.
-5. **Monitoring**
-   - Container memory limit of 256 MiB for the server and 512 MiB for the importer.
-   - Disk alert when the host passes 85% (it is at about 84% now).
-   - Database size reported per run.
-   - Health endpoint on the proxy.
-6. **Rollback**
-   - Studio is a separate container with an immutable image tag. Rolling back means redeploying the previous tag.
-   - A bad run is never edited. A superseding run is stored, and the dashboard defaults to the latest run.
-   - Dropping the SEO database affects nothing else.
-7. **No schedules**
-   - Collectors, verification runs and GSC pulls are started manually.
-   - A recurring crawl or API pull needs separate authorization, with the agreed crawl policy (1 request per 3 seconds, single concurrency).
+| Safeguard | How staging implements it | Rehearsed |
+| --- | --- | --- |
+| Isolated store | Dedicated named volume `sc-seo-staging-evidence`, not shared with any other service or database | yes |
+| Writer role | `seo-import`: one-shot, started by hand, `network_mode: none`, the only container with a read-write mount | yes |
+| Read-only role | `seo-studio`: volume mounted `:ro`, SQLite opened `mode=ro`, server has no write paths | yes (write attempt refused) |
+| Append-only | Triggers refuse UPDATE and DELETE on every table, for the writer too | yes |
+| Container hardening | Read-only root filesystem, `cap_drop: ALL`, `no-new-privileges`, non-root uid 10001, pids 64 | yes |
+| Memory and CPU | Studio 256 MiB / 0.5 CPU (measured 30 MiB); importer 512 MiB / 1 CPU; no swap | yes |
+| Storage | Image 50 MB; store 27 MB per baseline; each later run adds roughly its history size | measured |
+| Access | Published on `127.0.0.1` only; reached through the TLS reverse proxy on a `*.sustainablecatalyst.com` host, so the Workspace cookie is same-site | proxy route needs owner approval |
+| Identity | Workspace `sc-workspace-seo-session/1.0`; `--allow` lists Studio users; `--session-method erw-account-session` matches production Workspace sign-in | yes (refusals) |
+| Secrets | Only the Workspace **public** keyring, mounted read-only. No private keys, database passwords or Google credentials | yes |
+| Backups | Add a `ct-seo-evidence` stream (kind `sqlite-consistent tar`) to the existing Pi off-host backup: encrypted with age on the Mac, ciphertext on the Pi | backup and restore drill rehearsed; stream not added |
+| Rollback | Immutable image tag; redeploy the previous tag. A bad run is superseded by a new run, never edited. Deleting the volume affects nothing else | — |
+| No schedules | No cron, timers or crawls. Imports and Search Console pulls are run by hand | yes |
 
-## Staging acceptance procedure
-1. Deploy the Workspace session endpoint and SEO Studio to staging with an allowlist of only the owner's subject.
-2. Signed out, `/api/runs` returns 401.
-3. Signed in, the run list loads.
-4. These are refused with 401:
-   - another subject;
-   - an expired session;
-   - a Research session;
-   - a tampered session.
-5. Import the baseline on staging and confirm the receipt shows `reconciled: true` with 9/9 checks.
-6. Check that the history SHA-256 matches the development import.
-7. Compare dashboard counts with the receipt:
-   - status 200/404/unknown = 3,301 / 448 / 2;
-   - broken edges 2,694;
-   - sitemap URLs 2,232;
-   - KB not_verified 324 / verified 1.
-8. Every batch shows `validated-not-deployed`.
-9. Restore drill: restore the dump into a scratch database and confirm identical run hashes and row counts.
-10. Check headers: CSP, `no-store`, `X-Frame-Options: DENY`, and no external assets.
-11. Confirm that no outbound requests were made during the session, from proxy and egress logs.
+### Rehearsal
+`SEO_STAGING_EVIDENCE=<private dir> PY=<python with cryptography> deploy/staging/rehearse.sh`
+
+This builds the image, imports the real baseline into a throwaway volume, starts the hardened Studio, and runs
+22 acceptance checks plus a backup and restore drill. Everything is removed afterwards.
+
+### Staging procedure (each step needs owner approval)
+1. A Workspace build containing `/v1/seo-access/session` is deployed where the Studio's users sign in, with
+   `SC_WORKSPACE_SEO_STUDIO_SESSION_ENABLED=true`, `SC_WORKSPACE_SEO_STUDIO_USERS=<owner key>`, and the Studio
+   origin in `SC_WORKSPACE_CORS_ALLOWED_ORIGINS`.
+2. Build the image at a `main` commit and tag it immutably.
+3. Copy the private SC-SEO-01 evidence to a mode-0700 directory on the host.
+4. Run `deploy/staging/import-baseline.sh <UTC>` and record the history SHA-256. It must match the development
+   value, `417b195b…`.
+5. Start `seo-studio` and add the proxy route.
+6. Add the backup stream and run one restore drill.
+7. Owner browser acceptance: the checks in `rehearse.sh` (sign-in, refusals, counts, headers), carried out
+   through the real Workspace sign-in.

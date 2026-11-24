@@ -1,0 +1,58 @@
+# SEO Studio staging. Nothing here runs on a schedule, crawls, or calls Google.
+# Host prerequisites (owner): SEO_STAGING_KEYRING (Workspace public keyring JSON, 0644),
+# SEO_STAGING_EVIDENCE (private SC-SEO-01 evidence root, read-only), SEO_STAGING_ALLOW (workspace-user:<key>),
+# SEO_STAGING_SESSION_URL (Workspace /v1/seo-access/session on a *.sustainablecatalyst.com origin).
+name: sc-seo-staging
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: ["/tmp:size=16m,mode=1777"]
+  pids_limit: 64
+  restart: "no"
+
+services:
+  seo-studio:
+    <<: *hardening
+    image: sc-seo-intelligence:${SEO_IMAGE_TAG:?set SEO_IMAGE_TAG}
+    restart: unless-stopped
+    command:
+      - --db=/data/seo-evidence.sqlite
+      - --keyring=/run/seo/keyring.json
+      - --allow=${SEO_STAGING_ALLOW:?set SEO_STAGING_ALLOW}
+      - --session-method=${SEO_STAGING_SESSION_METHOD:-erw-account-session}
+      - --workspace-session-url=${SEO_STAGING_SESSION_URL:?set SEO_STAGING_SESSION_URL}
+      - --bind=0.0.0.0
+      - --port=18980
+    volumes:
+      - seo-evidence:/data:ro          # reader: read-only mount + SQLite mode=ro
+      - ${SEO_STAGING_KEYRING:?set SEO_STAGING_KEYRING}:/run/seo/keyring.json:ro
+    ports: ["127.0.0.1:${SEO_STAGING_PORT:-18981}:18980"]   # reverse proxy (TLS) only
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:18980/app.css',timeout=3)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  seo-import:
+    # Writer: one-shot, started by hand (`--profile import run --rm seo-import ...`). Never scheduled.
+    <<: *hardening
+    profiles: ["import"]
+    image: sc-seo-intelligence:${SEO_IMAGE_TAG:?set SEO_IMAGE_TAG}
+    entrypoint: ["python", "-s", "-E"]
+    network_mode: none                 # imports are offline: no requests of any kind
+    tmpfs: ["/tmp:size=256m,mode=1777"] # baseline history is built here, then appended to the store
+    volumes:
+      - seo-evidence:/data
+      - ${SEO_STAGING_EVIDENCE:?set SEO_STAGING_EVIDENCE}:/evidence:ro
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1.0
+
+volumes:
+  seo-evidence:
+    name: sc-seo-staging-evidence
