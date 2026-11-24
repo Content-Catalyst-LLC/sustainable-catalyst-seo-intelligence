@@ -241,6 +241,28 @@ class AuthenticatedStudio(unittest.TestCase):
         for name, auth in cases.items():
             self.assertEqual(self.get("/api/runs", auth)[0], 401, name)
 
+    def test_validly_signed_research_session_from_the_same_key_is_refused(self):
+        # A genuine Research session (signed by the same Workspace key, Research domain and audience) must not open
+        # SEO Studio; nor may an SEO-shaped body signed under the Research domain.
+        from seo_workspace_auth import canonical
+        now = datetime.now(timezone.utc)
+
+        def signed(domain, **over):
+            body = {"schema": domain, "issuer": "sustainable-catalyst-workspace", "audience": "sc-research",
+                    "subject": "workspace-user:owner", "authentication": "sc-identity-oidc-session",
+                    "issuedAt": now.isoformat(), "expiresAt": (now + timedelta(seconds=120)).isoformat(), **over}
+            sig = self.key.sign(body["schema"].encode() + b"\n" + canonical(body))
+            doc = {**body, "signature": {"alg": "Ed25519", "keyId": self.key_id,
+                                         "value": base64.urlsafe_b64encode(sig).rstrip(b"=").decode()}}
+            return "SC-Workspace " + base64.urlsafe_b64encode(canonical(doc)).rstrip(b"=").decode()
+
+        research = "sc-workspace-research-session/1.0"
+        self.assertEqual(self.get("/api/runs", signed(research))[0], 401)
+        self.assertEqual(self.get("/api/runs", signed(research, audience="sc-seo-intelligence"))[0], 401)
+        self.assertEqual(self.get("/api/runs", signed("sc-workspace-seo-session/1.0"))[0], 401)  # wrong audience
+        self.assertEqual(self.get("/api/runs", signed("sc-workspace-seo-session/1.0",
+                                                      audience="sc-seo-intelligence"))[0], 200)  # control
+
     def test_dashboard_api(self):
         auth = self.session()
         status, body, _ = self.get("/api/runs", auth)
