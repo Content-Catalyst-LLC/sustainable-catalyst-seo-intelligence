@@ -5,6 +5,7 @@
   const view = document.getElementById("view");
   const runSelect = document.getElementById("run");
   let session = null, sessionUntil = 0, runs = [], tab = "overview", cache = {};
+  const applied = {filter: "", q: "", kind: ""}; // last filters applied in Pages / Recommendations (used by "Current filters" export)
 
   const esc = (v) => String(v ?? "—").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
   const num = (v) => (typeof v === "number" ? v.toLocaleString() : esc(v));
@@ -117,7 +118,8 @@
       return `<h2>Recorded verification states</h2>${kv(k.verification_states)}<h2>In a sitemap, by state</h2>${kv(k.in_sitemap_by_state)}${note(k.note)}`;
     },
     async pages() {
-      const filter = document.getElementById("f")?.value || "", text = document.getElementById("s")?.value || "", offset = +(view.dataset.offset || 0);
+      // Filters come from state set by Apply: render() replaces the view (and these inputs) before this runs.
+      const filter = applied.filter, text = applied.q, offset = +(view.dataset.offset || 0);
       const r = await api("/api/pages?" + q({run: run(), filter, q: text, offset}));
       const opts = ["", "findings", "broken_out", "not_200", "no_description", "multiple_h1", "sitemap_problem", "kb_unverified", "structured_data"];
       return `<div class="toolbar"><input id="s" placeholder="URL contains" value="${esc(text)}"><select id="f">${opts.map((o) => `<option ${o === filter ? "selected" : ""} value="${o}">${o || "all pages"}</option>`).join("")}</select>
@@ -128,6 +130,7 @@
     },
     async recommendations() {
       const offset = +(view.dataset.offset || 0), kind = view.dataset.kind || "";
+      applied.kind = kind;
       const [o, r] = await Promise.all([overview(), api("/api/recommendations?" + q({run: run(), kind, offset}))]);
       return `${note("Inferred opportunities. Each needs human approval and changes nothing; an approved change ships only as an authorized remediation batch.")}
         <div class="toolbar">${["", ...o.recommendations.map((x) => x.kind)].map((k) => `<button class="kind" data-kind="${esc(k)}">${esc(k || "all")}${k ? ` (${o.recommendations.find((x) => x.kind === k).n})` : ""}</button>`).join("")}
@@ -160,13 +163,46 @@
   view.addEventListener("click", (e) => {
     const t = e.target;
     if (t.dataset.url) return showPage(t.dataset.url).catch((err) => alertNote(err));
-    if (t.id === "go") { view.dataset.offset = 0; return render(); }
+    if (t.id === "go") {
+      applied.filter = document.getElementById("f").value; applied.q = document.getElementById("s").value;
+      view.dataset.offset = 0; return render();
+    }
     if (t.id === "next" || t.id === "prev") { view.dataset.offset = Math.max(0, +(view.dataset.offset || 0) + (t.id === "next" ? 50 : -50)); return render(); }
     if (t.classList.contains("kind")) { view.dataset.kind = t.dataset.kind; view.dataset.offset = 0; return render(); }
   });
   const alertNote = (err) => { view.insertAdjacentHTML("afterbegin", note(err.message, true)); };
   document.getElementById("close").addEventListener("click", () => document.getElementById("detail").close());
   runSelect.addEventListener("change", () => { cache = {}; render(); });
+
+  // Export to Excel: the server builds the workbook from the same read-only store, under the same session check.
+  const exportStatus = document.getElementById("export-status");
+  const describe = () => [applied.filter && `filter ${applied.filter}`, applied.q && `URL contains “${applied.q}”`,
+    applied.kind && `recommendations: ${applied.kind}`].filter(Boolean).join("; ") || "no filters applied";
+  document.getElementById("export-scope").addEventListener("change", (e) => {
+    exportStatus.textContent = e.target.value === "filtered" ? "Current filters: " + describe() : "";
+  });
+  document.getElementById("export").addEventListener("click", async (e) => {
+    const button = e.currentTarget, scope = document.getElementById("export-scope").value;
+    if (!run()) return;
+    button.disabled = true;
+    exportStatus.textContent = "Preparing workbook…";
+    try {
+      const params = {run: run(), scope};
+      if (scope === "filtered") Object.assign(params, {filter: applied.filter, q: applied.q, kind: applied.kind});
+      const r = await fetch("/api/export.xlsx?" + q(params), {headers: {Authorization: await getSession()}});
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Export failed");
+      const name = (/filename="([^"]+)"/.exec(r.headers.get("Content-Disposition") || "") || [])[1] || "seo-studio-export.xlsx";
+      const href = URL.createObjectURL(await r.blob());
+      const a = Object.assign(document.createElement("a"), {href, download: name});
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 30000);
+      exportStatus.textContent = "Downloaded " + name + (scope === "filtered" ? " (" + describe() + ")" : " (entire run)");
+    } catch (err) {
+      exportStatus.textContent = err.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
 
   (async () => {
     try {

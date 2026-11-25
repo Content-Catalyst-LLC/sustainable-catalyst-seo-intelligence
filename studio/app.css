@@ -22,3 +22,4 @@ th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute
 a.u{color:var(--accent);cursor:pointer;text-decoration:underline}
 dialog{max-width:900px;width:calc(100% - 32px);border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}
 pre{white-space:pre-wrap;font-size:12px}footer{padding:16px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
+.export{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.export button{font:inherit;padding:4px 10px;cursor:pointer}.export .note{margin:0}

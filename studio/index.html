@@ -12,6 +12,8 @@
   <h1>SEO Studio</h1>
   <div id="who" aria-live="polite"></div>
   <label>Run <select id="run"></select></label>
+  <div class="export"><label>Export <select id="export-scope"><option value="run">Entire run</option><option value="filtered">Current filters</option></select></label>
+    <button id="export" type="button">Export to Excel</button><span id="export-status" class="note" aria-live="polite"></span></div>
 </header>
 <nav id="tabs" role="tablist">
   <button data-tab="overview" aria-selected="true">Overview</button>

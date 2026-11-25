@@ -15,9 +15,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 from statistics import median
+import threading
 from urllib.parse import parse_qs, urlsplit
 
 import seo_store
+import seo_studio_export
 from seo_workspace_auth import Keyring, SessionRefused, verify_session
 
 STATIC = Path(__file__).resolve().parent / "studio"
@@ -167,6 +169,8 @@ def make_handler(db, keyring, allowed, methods, workspace_session_url, workspace
     csp = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
            f"connect-src 'self' {workspace_origin}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 
+    export_slot = threading.BoundedSemaphore(1)  # one workbook at a time; the store is shared and read-only
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "SEOStudio"
         sys_version = ""
@@ -183,6 +187,20 @@ def make_handler(db, keyring, allowed, methods, workspace_session_url, workspace
                 self.send_header(k, v)
             self.end_headers()
             self.wfile.write(data)
+
+        def export(self, session, q):
+            """Excel review workbook (SC-SEO-STUDIO-EXPORT-01): read-only, same session check as every API route."""
+            if not export_slot.acquire(blocking=False):
+                return self.send(429, {"error": "an export is already being prepared; try again shortly"},
+                                 extra={"Retry-After": "10"})
+            try:
+                data, name, _ = seo_studio_export.export_workbook(
+                    db, q["run"], scope=q.get("scope", "run"), flt=q.get("filter", ""), query=q.get("q", ""),
+                    kind=q.get("kind", ""), filters=FILTERS, subject=session["subject"])
+            finally:
+                export_slot.release()
+            return self.send(200, data, seo_studio_export.XLSX_TYPE,
+                             extra={"Content-Disposition": f'attachment; filename="{name}"'})
 
         def do_GET(self):  # noqa: N802
             parts = urlsplit(self.path)
@@ -213,6 +231,8 @@ def make_handler(db, keyring, allowed, methods, workspace_session_url, workspace
                     return self.send(200, page_detail(db, q["run"], q["url"]))
                 if parts.path == "/api/recommendations":
                     return self.send(200, recommendations(db, q["run"], q.get("kind", "")[:40], offset))
+                if parts.path == "/api/export.xlsx":
+                    return self.export(session, q)
                 if parts.path == "/api/compare":
                     return self.send(200, seo_store.compare(db, q["before"], q["after"]))
             except KeyError:
